@@ -1,0 +1,55 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <p>
+    Register bots you created in Telegram's BotFather or Bale's equivalent, and measure
+    what each platform can actually do.
+  </p>
+
+  <h2>Channels</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Platform</th>
+        <th>Capabilities</th>
+        <th>Available in pool</th>
+        <th>Inline keyboards</th>
+        <th>Max message</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for platform in platforms %}
+        <tr>
+          <td><strong>{{ platform.slug }}</strong></td>
+          <td>
+            {% if platform.verified %}
+              <span style="color:#16a34a"><b>verified</b></span>
+            {% else %}
+              <span style="color:#b45309"><b>provisional</b></span>
+            {% endif %}
+          </td>
+          <td>{{ platform.pool_depth }}</td>
+          <td>{{ platform.capabilities.inline_keyboards|yesno:"yes,no" }}</td>
+          <td>{{ platform.capabilities.max_text_length }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p>
+    <strong>Provisional</strong> means the values are conservative guesses, not measured.
+    The pre-payment preview tells customers so. Run the probe below to replace them with
+    real answers.
+  </p>
+
+  {% if measured %}
+    <h2>Last measured Bale capabilities</h2>
+    <pre>{{ measured }}</pre>
+  {% endif %}
+
+  <h2>Actions</h2>
+  <ul>
+    <li><a href="{{ register_url }}">Register a bot</a> — add a Telegram or Bale bot to the pool.</li>
+    <li><a href="{{ probe_url }}">Run the Bale capability probe</a> — answers the BALE.md §2 questions against a real bot.</li>
+  </ul>
+{% endblock %}

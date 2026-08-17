@@ -1,0 +1,48 @@
+# --- Secrets (never commit) --------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# --- Django ------------------------------------------------------------------
+*.sqlite3
+/backend/staticfiles/
+/backend/media/
+*.mo
+
+# --- Node / Next.js ----------------------------------------------------------
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# --- Editors / OS ------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Local artifacts ---------------------------------------------------------
+*.log
+/tmp/
+.claude/
+/backups/
+.quote-ref
+.verify-state

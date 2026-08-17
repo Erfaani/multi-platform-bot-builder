@@ -1,0 +1,20 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <p>
+    Suspending <strong>{{ subscription.bot }}</strong> immediately removes its webhook
+    from every platform and stops it from answering customers. This is not reversible
+    from here — reactivate it with "Renew" once payment is sorted out.
+  </p>
+
+  <ul>
+    <li>Status: {{ subscription.status }}</li>
+    <li>Current period ends: {{ subscription.current_period_end }}</li>
+  </ul>
+
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <p><input type="submit" value="Confirm suspension" class="default"></p>
+  </form>
+{% endblock %}

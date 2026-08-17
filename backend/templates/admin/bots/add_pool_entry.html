@@ -1,0 +1,20 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <p>
+    Create the bot with <strong>@BotFather</strong> first, then paste its token here.
+    The token is encrypted immediately and is never displayed again — not here, not in
+    the API, not to the customer who is eventually assigned this bot.
+  </p>
+
+  <p>
+    Remember that the <code>@username</code> is fixed at creation time and cannot be
+    changed later, so pick something generic enough to assign to any customer.
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+    <table>{{ form.as_table }}</table>
+    <p><input type="submit" value="Add to pool" class="default"></p>
+  </form>
+{% endblock %}

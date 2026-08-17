@@ -1,0 +1,26 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <p>
+    Renewing extends <strong>{{ subscription.bot }}</strong>'s billing period by one month
+    from today and marks the subscription <strong>ACTIVE</strong>.
+    {% if subscription.status == "SUSPENDED" %}
+      The bot is currently suspended — this will re-register its webhook and bring it
+      back online immediately.
+    {% endif %}
+  </p>
+
+  <ul>
+    <li>Status: {{ subscription.status }}</li>
+    <li>Current period ends: {{ subscription.current_period_end }}</li>
+    {% if subscription.grace_period_ends_at %}
+      <li>Grace period ends: {{ subscription.grace_period_ends_at }}</li>
+    {% endif %}
+    <li>Monthly amount: {{ subscription.monthly_amount_minor }} minor units {{ subscription.currency }}</li>
+  </ul>
+
+  <form method="post">
+    {% csrf_token %}
+    <p><input type="submit" value="Confirm renewal" class="default"></p>
+  </form>
+{% endblock %}

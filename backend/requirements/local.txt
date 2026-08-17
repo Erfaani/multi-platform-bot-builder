@@ -1,0 +1,17 @@
+﻿-r base.txt
+
+# pytest 9 is not yet supported by pytest-django 4.13 (breaks _django_db_helper).
+pytest>=8.2,<9
+pytest-django>=4.8
+pytest-cov>=5.0
+pytest-timeout>=2.3            # Phase 10: a hung test fails the run instead of hanging CI forever
+factory-boy>=3.3
+freezegun>=1.5
+respx>=0.21                   # recorded-fixture transport for adapter conformance tests
+# ruff installed separately
+mypy>=1.10
+django-stubs>=5.0
+djangorestframework-stubs>=3.15
+bandit>=1.7
+django-debug-toolbar>=4.4
+django-extensions>=3.2

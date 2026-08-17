@@ -1,0 +1,24 @@
+# Pinned in Phase 1 once the project is generated and resolved.
+Django>=5.2,<6.0          # 5.2 LTS; pytest-django 4.13+ requires it
+djangorestframework>=3.15,<4.0
+djangorestframework-simplejwt>=5.3,<6.0
+drf-spectacular>=0.27,<1.0
+django-filter>=24.1
+django-cors-headers>=4.3
+django-environ>=0.11
+psycopg[binary]>=3.1,<4.0
+celery>=5.4,<6.0
+redis>=5.0,<6.0
+django-redis>=5.4
+argon2-cffi>=23.1
+cryptography>=42.0
+pillow>=10.3
+python-magic>=0.4.27          # content sniffing for uploads (SECURITY.md §7)
+httpx>=0.27                   # platform transport, proxy-aware (egress profiles)
+structlog>=24.1
+gunicorn>=22.0
+whitenoise>=6.6
+pgvector>=0.2.5
+anthropic>=0.40,<1.0           # Phase 8 — AI assistant provider (Claude)
+import-linter>=2.0            # enforces the layering contract (ARCHITECTURE.md §2)
+django-prometheus>=2.3        # Phase 10 — /metrics for Grafana/Prometheus scraping

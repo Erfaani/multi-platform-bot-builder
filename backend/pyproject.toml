@@ -1,0 +1,49 @@
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py"]
+testpaths = ["tests", "apps"]
+addopts = "--strict-markers -q --timeout=60 --timeout-method=thread"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = ["migrations", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "C4", "DJ", "S", "RUF"]
+ignore = [
+    "S101",   # assert is fine in tests
+    "DJ001",  # null=True on CharField is deliberate in a few places
+    "B008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]
+"config/settings/*" = ["F403", "F405"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main"]
+ignore_missing_imports = true
+warn_unused_ignores = false
+exclude = ["migrations", ".venv"]
+
+[tool.django-stubs]
+django_settings_module = "config.settings.test"
+
+# Enforces the layering contract in ARCHITECTURE.md §2.
+[tool.importlinter]
+root_packages = ["apps"]
+
+[[tool.importlinter.contracts]]
+name = "API layer must not be imported by services or domain"
+type = "forbidden"
+source_modules = ["apps.*.services", "apps.*.domain"]
+forbidden_modules = ["apps.*.api"]
+
+[[tool.importlinter.contracts]]
+name = "Apps must not import another app's api package"
+type = "forbidden"
+source_modules = ["apps.core", "apps.accounts", "apps.customers", "apps.audit"]
+forbidden_modules = ["apps.*.api"]

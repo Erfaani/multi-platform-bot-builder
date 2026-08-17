@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --surface: 255 255 255;
+    --ink: 17 24 39;
+    --muted: 107 114 128;
+    --accent: 37 99 235;
+    --line: 229 231 235;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface: 15 17 21;
+      --ink: 237 240 244;
+      --muted: 148 156 168;
+      --accent: 96 149 255;
+      --line: 39 43 51;
+    }
+  }
+
+  body {
+    background-color: rgb(var(--surface));
+    color: rgb(var(--ink));
+  }
+
+  /* Persian needs a little more breathing room to stay legible (I18N.md §3). */
+  [lang="fa"] {
+    font-family: var(--font-persian), Vazirmatn, Tahoma, sans-serif;
+    line-height: 1.9;
+  }
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-lg border border-line bg-transparent px-3 py-2 text-sm
+           outline-none focus:border-accent focus:ring-1 focus:ring-accent;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2
+           text-sm font-medium text-white transition hover:opacity-90
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-lg border border-line
+           px-4 py-2 text-sm font-medium transition hover:border-accent;
+  }
+
+  .card {
+    @apply rounded-xl border border-line p-5;
+  }
+}

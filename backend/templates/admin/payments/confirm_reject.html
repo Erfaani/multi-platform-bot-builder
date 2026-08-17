@@ -1,0 +1,14 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <p>
+    Rejecting order <strong>#{{ payment.order.number }}</strong> returns it to the
+    customer so they can pay again. The reason below is shown to them.
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+    <table>{{ form.as_table }}</table>
+    <p><input type="submit" value="Reject payment" class="default"></p>
+  </form>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <p>
+    Create the bot in the platform's own client first — <strong>@BotFather</strong> on
+    Telegram, or Bale's bot-creation flow inside the Bale app. Neither platform has an API
+    to create a bot, which is why this step is manual (ADR-0002).
+  </p>
+
+  <p>
+    The <code>@username</code> is fixed at creation time and <strong>cannot be changed
+    later</strong> by any API call, so pick something generic enough to hand to any
+    customer.
+  </p>
+
+  <p>
+    The token is encrypted the moment you submit it and is never displayed again — not
+    here, not in the API, and not to the customer who is eventually assigned this bot.
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+    <table>{{ form.as_table }}</table>
+    <p><input type="submit" value="Register bot" class="default"></p>
+  </form>
+{% endblock %}

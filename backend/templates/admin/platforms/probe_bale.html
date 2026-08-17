@@ -1,0 +1,86 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <p>
+    This answers the capability questions in <code>BALE.md §2</code> against a real Bale
+    bot. Until it has been run, the Bale adapter uses conservative guesses and the
+    pre-payment preview warns customers that the layout may differ.
+  </p>
+
+  <p>
+    <strong>What it does:</strong> calls <code>getMe</code>, tries the branding and
+    webhook methods, and — if you give it a chat id — sends a few probe messages and
+    binary-searches the real maximum message length. Your bot will receive several test
+    messages.
+  </p>
+
+  <p>
+    The token is used for this request only. It is not stored, not logged, and not shown
+    again.
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+    <table>{{ form.as_table }}</table>
+    <p><input type="submit" value="Run probe" class="default"></p>
+  </form>
+
+  {% if result %}
+    <h2>Results</h2>
+
+    {% if result.reachable %}
+      <p>
+        Connected as <strong>@{{ result.identity.username }}</strong>
+        (id {{ result.identity.id }}).
+      </p>
+    {% else %}
+      <p style="color:#dc2626">
+        <strong>Not reachable.</strong> {{ result.error }}
+      </p>
+      <p>
+        If this is a network failure rather than a bad token, that is spike question 11
+        answered: <code>worker-bale</code> needs an egress route that can reach Bale
+        (docs/00-ANALYSIS.md R-03).
+      </p>
+    {% endif %}
+
+    <table>
+      <thead><tr><th>Answer</th><th>Question</th><th>Detail</th></tr></thead>
+      <tbody>
+        {% for key, answer in result.answers.items %}
+          <tr>
+            <td>
+              {% if answer.supported %}
+                <span style="color:#16a34a"><b>yes</b></span>
+              {% elif answer.supported is False %}
+                <span style="color:#dc2626"><b>no</b></span>
+              {% else %}
+                <span style="color:#b45309"><b>unknown</b></span>
+              {% endif %}
+            </td>
+            <td>{{ answer.question }}</td>
+            <td>{{ answer.detail }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if result.reachable %}
+      <h3>Proposed capabilities</h3>
+      <pre>{{ result.capabilities_proposal }}</pre>
+
+      {% if not result.conclusive %}
+        <p style="color:#b45309">
+          Some questions are still unanswered, so this is not yet conclusive. Supply a
+          chat id to answer the messaging questions.
+        </p>
+      {% endif %}
+
+      <p>
+        To finish closing R-02: tick <em>Apply results</em>, then paste these values into
+        <code>BALE_CAPABILITIES</code> in <code>apps/platforms/bale/adapter.py</code> and
+        set <code>verified=True</code>.
+      </p>
+    {% endif %}
+  {% endif %}
+{% endblock %}

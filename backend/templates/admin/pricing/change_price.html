@@ -1,0 +1,14 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <p>
+    Changing a price closes the current version and opens a new one. Nothing is
+    overwritten, so existing quotes and orders keep the amount they were sold at.
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+    <table>{{ form.as_table }}</table>
+    <p><input type="submit" value="Set new price" class="default"></p>
+  </form>
+{% endblock %}

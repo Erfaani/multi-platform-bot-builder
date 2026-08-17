@@ -1,0 +1,24 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <p>
+    Approving marks order <strong>#{{ payment.order.number }}</strong> as
+    <strong>PAID</strong> and starts provisioning. This is not reversible from here.
+  </p>
+
+  <ul>
+    <li>Amount: {{ payment.amount_minor }} minor units {{ payment.currency }}</li>
+    <li>Method: {{ payment.payment_method }}</li>
+    {% if payment.tx_hash %}<li>Transaction: {{ payment.tx_hash }}</li>{% endif %}
+    <li>Workspace: {{ payment.order.tenant }}</li>
+  </ul>
+
+  {% if payment.internal_note %}
+    <p><strong>Internal notes:</strong> {{ payment.internal_note|linebreaksbr }}</p>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    <p><input type="submit" value="Confirm approval" class="default"></p>
+  </form>
+{% endblock %}
