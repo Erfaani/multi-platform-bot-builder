@@ -23,6 +23,7 @@ htmlcov/
 *.sqlite3
 /backend/staticfiles/
 /backend/media/
+/backend/test-media/
 *.mo
 
 # --- Node / Next.js ----------------------------------------------------------
