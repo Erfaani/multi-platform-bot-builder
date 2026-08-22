@@ -176,6 +176,156 @@ class TestCrmConversation:
         assert feedback.rating == 5
 
 
+class TestInputRestrictions:
+    """Owner-configurable phone/email rules (Phase 10.5), enforced identically on
+    Telegram and Bale since both dispatch through the same `apps.crm.handlers` code."""
+
+    @pytest.fixture
+    def dual_crm_bot(self, catalogue, tenant_a, user, fake_transport):
+        from apps.bots.credentials import add_pool_entry
+        from apps.orders.domain.state_machine import Actor, OrderStatus
+        from apps.orders.services import build_quote, claim_quote, place_order, transition_order
+        from apps.provisioning.saga import create_job, run_job
+
+        add_pool_entry(
+            platform="telegram", username="restrict_tg_bot",
+            token="7300000001:AA-restrict-telegram-token-aaaaaaaaaaaa",
+        )
+        add_pool_entry(
+            platform="bale", username="restrict_bale_bot",
+            token="7400000001:AA-restrict-bale-token-bbbbbbbbbbbbbb",
+        )
+
+        quote, _ = build_quote(
+            template_slug="generic", platforms=["telegram", "bale"],
+            feature_slugs=["consultation_request"],
+            currency="USD", business_draft={"name": "Generic Biz"},
+        )
+        claim_quote(quote=quote, tenant=tenant_a, user=user)
+        order = place_order(quote=quote, tenant=tenant_a, user=user)
+        for target in (OrderStatus.RECEIPT_SUBMITTED, OrderStatus.PAYMENT_REVIEW, OrderStatus.PAID):
+            actor = Actor.CUSTOMER if target == OrderStatus.RECEIPT_SUBMITTED else Actor.STAFF
+            transition_order(order=order, target=target, actor_type=actor, user=user, scopes={"*"})
+
+        job = run_job(create_job(order=order, strategy="pool"))
+        assert job.status == "SUCCEEDED", f"{job.error_code}: {job.error_detail}"
+        return job.bot
+
+    def _dispatch(self, instance, payload):
+        from apps.bot_runtime.dispatcher import dispatch_update
+        from apps.bot_runtime.models import InboundUpdate
+
+        update = InboundUpdate.objects.create(
+            instance=instance, platform_update_id=payload["update_id"], raw=payload
+        )
+        return dispatch_update(update)
+
+    def _message(self, update_id, text, user_id):
+        return {
+            "update_id": update_id,
+            "message": {
+                "message_id": update_id, "text": text, "chat": {"id": 1},
+                "from": {"id": user_id, "first_name": "Ada", "language_code": "en"},
+            },
+        }
+
+    def test_default_policy_is_unrestricted(self, provisioned_bot):
+        from apps.bots import services as bots_services
+
+        policy = bots_services.get_input_restrictions(provisioned_bot.pk)
+        assert bots_services.is_phone_allowed(policy, "+1 555 010 0100")
+        assert policy.collect_email_on_consultation is False
+
+    def test_a_blocked_number_is_rejected_on_both_platforms(self, dual_crm_bot):
+        from apps.bots import services as bots_services
+
+        bots_services.update_input_restrictions(
+            bot=dual_crm_bot, actor=None, blocked_phone_numbers=["15550100100"]
+        )
+
+        for index, instance in enumerate(dual_crm_bot.instances.all().order_by("platform")):
+            user_id = 800 + index
+            self._dispatch(instance, self._message(10 + index * 10, "/consultation", user_id))
+            result = self._dispatch(
+                instance, self._message(11 + index * 10, "+1 555 010 0100", user_id)
+            )
+            assert result.route == "crm:awaiting_phone", instance.platform
+            assert not Lead.objects.filter(bot=dual_crm_bot, phone="+1 555 010 0100").exists()
+
+    def test_a_calling_code_outside_the_allowlist_is_rejected_on_both_platforms(self, dual_crm_bot):
+        from apps.bots import services as bots_services
+
+        bots_services.update_input_restrictions(
+            bot=dual_crm_bot, actor=None, allowed_calling_codes=["+98"]
+        )
+
+        for index, instance in enumerate(dual_crm_bot.instances.all().order_by("platform")):
+            user_id = 810 + index
+            self._dispatch(instance, self._message(20 + index * 10, "/consultation", user_id))
+            rejected = self._dispatch(
+                instance, self._message(21 + index * 10, "+1 555 010 0199", user_id)
+            )
+            assert rejected.route == "crm:awaiting_phone", instance.platform
+
+            accepted = self._dispatch(
+                instance, self._message(22 + index * 10, "+98 21 1234 5678", user_id)
+            )
+            assert accepted.route == "crm:awaiting_phone"
+            assert Lead.objects.filter(bot=dual_crm_bot, phone="+98 21 1234 5678").exists()
+
+    def test_email_is_not_collected_unless_the_owner_opts_in(self, dual_crm_bot, fake_transport):
+        instance = dual_crm_bot.instances.get(platform="telegram")
+        self._dispatch(instance, self._message(40, "/consultation", 840))
+        result = self._dispatch(instance, self._message(41, "+1 555 010 0100", 840))
+
+        # Still reports the phone-capture route (that's the state active *for this
+        # message*) — the point of this test is that the session ended up back at IDLE
+        # with a lead already saved, not routed into a follow-up email step.
+        assert result.route == "crm:awaiting_phone"
+        lead = Lead.objects.get(bot=dual_crm_bot, phone="+1 555 010 0100")
+        assert lead.email == ""
+
+    def test_opting_in_adds_an_email_step_and_validates_the_domain(self, dual_crm_bot):
+        from apps.bots import services as bots_services
+
+        bots_services.update_input_restrictions(
+            bot=dual_crm_bot, actor=None,
+            collect_email_on_consultation=True, blocked_email_domains=["spam.example"],
+        )
+
+        instance = dual_crm_bot.instances.get(platform="telegram")
+        self._dispatch(instance, self._message(50, "/consultation", 850))
+        self._dispatch(instance, self._message(51, "+1 555 010 0100", 850))
+        # No lead yet — the phone alone isn't enough once email collection is on.
+        assert not Lead.objects.filter(bot=dual_crm_bot).exists()
+
+        rejected = self._dispatch(instance, self._message(52, "ada@spam.example", 850))
+        assert rejected.route == "crm:awaiting_email"
+        assert not Lead.objects.filter(bot=dual_crm_bot).exists()
+
+        accepted = self._dispatch(instance, self._message(53, "ada@example.com", 850))
+        assert accepted.route == "crm:awaiting_email"
+        lead = Lead.objects.get(bot=dual_crm_bot)
+        assert lead.phone == "+1 555 010 0100"
+        assert lead.email == "ada@example.com"
+
+    def test_email_collection_works_identically_on_bale(self, dual_crm_bot):
+        from apps.bots import services as bots_services
+
+        bots_services.update_input_restrictions(
+            bot=dual_crm_bot, actor=None, collect_email_on_consultation=True
+        )
+
+        instance = dual_crm_bot.instances.get(platform="bale")
+        self._dispatch(instance, self._message(60, "/consultation", 860))
+        self._dispatch(instance, self._message(61, "+1 555 010 0100", 860))
+        accepted = self._dispatch(instance, self._message(62, "ada@example.com", 860))
+
+        assert accepted.route == "crm:awaiting_email"
+        lead = Lead.objects.get(bot=dual_crm_bot)
+        assert lead.email == "ada@example.com"
+
+
 class TestOwnerNotificationsGating:
     def test_a_lead_notifies_the_owner_when_the_feature_is_bought(self, provisioned_bot, contact, user):
         from apps.features.models import Feature

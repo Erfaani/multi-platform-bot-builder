@@ -39,6 +39,7 @@ class Lead(PublicIdModel, TenantOwnedModel):
 
     message = models.TextField(blank=True)
     phone = models.CharField(max_length=32, blank=True)
+    email = models.EmailField(blank=True)
 
     #: An optional estimated deal value — set from the dashboard, never by the bot.
     value_minor = models.BigIntegerField(default=0)

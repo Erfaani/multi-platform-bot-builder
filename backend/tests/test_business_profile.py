@@ -8,13 +8,24 @@ from __future__ import annotations
 
 import pytest
 
-from apps.businesses.models import BusinessProfile, FaqEntry
+from apps.businesses.models import BusinessProfile, FaqEntry, WorkingHours
 
 pytestmark = pytest.mark.django_db
 
 
 def _bot_url(bot, suffix: str = "") -> str:
     return f"/api/v1/bots/{bot.public_id}/{suffix}"
+
+
+def _test_image(name: str = "logo.png") -> "SimpleUploadedFile":
+    import io
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (8, 8), "blue").save(buffer, format="PNG")
+    return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/png")
 
 
 class TestBusinessProfile:
@@ -55,6 +66,101 @@ class TestBusinessProfile:
     def test_unauthenticated_is_rejected(self, api, provisioned_bot):
         response = api.get(_bot_url(provisioned_bot, "business-profile/"))
         assert response.status_code == 401
+
+
+class TestBusinessLogo:
+    def test_owner_can_upload_a_logo(self, auth_client, provisioned_bot):
+        response = auth_client.post(
+            _bot_url(provisioned_bot, "business-profile/logo/"),
+            {"file": _test_image()},
+            format="multipart",
+        )
+        assert response.status_code == 200
+        assert response.json()["logo_url"].startswith("/media/public/logos/")
+
+        profile = BusinessProfile.objects.get(bot=provisioned_bot)
+        assert profile.logo.name.startswith("public/logos/")
+
+    def test_uploading_a_new_logo_replaces_the_old_file(self, auth_client, provisioned_bot):
+        auth_client.post(
+            _bot_url(provisioned_bot, "business-profile/logo/"),
+            {"file": _test_image("first.png")},
+            format="multipart",
+        )
+        first_name = BusinessProfile.objects.get(bot=provisioned_bot).logo.name
+
+        auth_client.post(
+            _bot_url(provisioned_bot, "business-profile/logo/"),
+            {"file": _test_image("second.png")},
+            format="multipart",
+        )
+        second_name = BusinessProfile.objects.get(bot=provisioned_bot).logo.name
+        assert second_name != first_name
+
+    def test_a_stranger_cannot_upload_a_logo(self, other_client, provisioned_bot):
+        response = other_client.post(
+            _bot_url(provisioned_bot, "business-profile/logo/"),
+            {"file": _test_image()},
+            format="multipart",
+        )
+        assert response.status_code == 404
+
+
+class TestWorkingHours:
+    def test_defaults_to_an_empty_week(self, auth_client, provisioned_bot):
+        response = auth_client.get(_bot_url(provisioned_bot, "working-hours/"))
+        assert response.status_code == 200
+        assert response.json()["days"] == []
+
+    def test_owner_can_set_the_whole_week(self, auth_client, provisioned_bot):
+        days = [
+            {"weekday": weekday, "opens_at": "09:00", "closes_at": "17:00", "is_closed": False}
+            for weekday in range(5)
+        ] + [
+            {"weekday": 5, "opens_at": None, "closes_at": None, "is_closed": True},
+            {"weekday": 6, "opens_at": None, "closes_at": None, "is_closed": True},
+        ]
+        response = auth_client.put(
+            _bot_url(provisioned_bot, "working-hours/"), {"days": days}, format="json"
+        )
+        assert response.status_code == 200
+        assert len(response.json()["days"]) == 7
+        assert WorkingHours.objects.filter(bot=provisioned_bot).count() == 7
+
+    def test_setting_the_week_replaces_any_previous_rows(self, auth_client, provisioned_bot):
+        auth_client.put(
+            _bot_url(provisioned_bot, "working-hours/"),
+            {"days": [{"weekday": 0, "opens_at": "09:00", "closes_at": "17:00", "is_closed": False}]},
+            format="json",
+        )
+        auth_client.put(
+            _bot_url(provisioned_bot, "working-hours/"),
+            {"days": [{"weekday": 1, "opens_at": "10:00", "closes_at": "18:00", "is_closed": False}]},
+            format="json",
+        )
+        rows = WorkingHours.objects.filter(bot=provisioned_bot)
+        assert rows.count() == 1
+        assert rows.first().weekday == 1
+
+    def test_a_closed_day_needs_no_times(self, auth_client, provisioned_bot):
+        response = auth_client.put(
+            _bot_url(provisioned_bot, "working-hours/"),
+            {"days": [{"weekday": 0, "opens_at": None, "closes_at": None, "is_closed": True}]},
+            format="json",
+        )
+        assert response.status_code == 200
+
+    def test_an_open_day_rejects_a_backwards_range(self, auth_client, provisioned_bot):
+        response = auth_client.put(
+            _bot_url(provisioned_bot, "working-hours/"),
+            {"days": [{"weekday": 0, "opens_at": "17:00", "closes_at": "09:00", "is_closed": False}]},
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_a_stranger_cannot_read_working_hours(self, other_client, provisioned_bot):
+        response = other_client.get(_bot_url(provisioned_bot, "working-hours/"))
+        assert response.status_code == 404
 
 
 class TestFaqCrud:

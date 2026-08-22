@@ -75,6 +75,10 @@ class CancelAppointmentSerializer(serializers.Serializer):
     reason = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
 
 
+class RescheduleAppointmentSerializer(serializers.Serializer):
+    starts_at = serializers.DateTimeField()
+
+
 class AvailableSlotsRequestSerializer(serializers.Serializer):
     service = serializers.IntegerField()
     staff = serializers.IntegerField()

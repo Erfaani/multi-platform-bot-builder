@@ -18,8 +18,12 @@ from apps.commerce.models import (
     BusinessOrderStatus,
     Cart,
     CartItem,
+    CourseOffering,
     Product,
     ProductCategory,
+    ProductImage,
+    PropertyImage,
+    PropertyListing,
     TableReservation,
 )
 
@@ -146,6 +150,249 @@ def delete_product(*, bot, product_id: int, actor) -> None:
         actor=actor, action="commerce.product_deleted", resource_type="product",
         resource_id=str(product_id), tenant=bot.tenant,
     )
+
+
+@transaction.atomic
+def add_product_image(*, bot, product_id: int, actor, upload) -> ProductImage:
+    from apps.core.files import PUBLIC_IMAGE_POLICY, validate_and_sanitise
+
+    product = Product.objects.filter(bot=bot, pk=product_id).first()
+    if product is None:
+        raise NotFoundError()
+
+    safe = validate_and_sanitise(upload, PUBLIC_IMAGE_POLICY)
+    image = ProductImage(product=product)
+    image.file.save(safe.filename, safe.content, save=False)
+    image.save()
+    bot.configuration.bump()
+    record_audit(
+        actor=actor, action="commerce.product_image_added", resource_type="product_image",
+        resource_id=str(image.pk), tenant=bot.tenant, metadata={"product": product.pk},
+    )
+    return image
+
+
+@transaction.atomic
+def delete_product_image(*, bot, image_id: int, actor) -> None:
+    image = ProductImage.objects.filter(product__bot=bot, pk=image_id).first()
+    if image is None:
+        raise NotFoundError()
+    image.file.delete(save=False)
+    image.delete()
+    bot.configuration.bump()
+    record_audit(
+        actor=actor, action="commerce.product_image_deleted", resource_type="product_image",
+        resource_id=str(image_id), tenant=bot.tenant,
+    )
+
+
+# --------------------------------------------------------------------------- property listings
+
+
+def list_properties(bot_id: int) -> list[PropertyListing]:
+    return list(
+        PropertyListing.objects.filter(bot_id=bot_id, is_active=True)
+        .prefetch_related("images")
+        .order_by("sort_order", "id")
+    )
+
+
+@transaction.atomic
+def create_property(*, bot, actor, title: str, listing_type: str, property_type: str, price_minor: int, **fields) -> PropertyListing:
+    title = title.strip()
+    if not title:
+        raise ValidationError(code="commerce.property_title_required", field_errors={"title": ["Required."]})
+    if price_minor < 0:
+        raise ValidationError(code="commerce.invalid_price", field_errors={"price_minor": ["Must not be negative."]})
+
+    listing = PropertyListing.objects.create(
+        tenant=bot.tenant,
+        bot=bot,
+        title=title[:128],
+        description=fields.get("description", ""),
+        listing_type=listing_type,
+        property_type=property_type,
+        bedrooms=fields.get("bedrooms"),
+        bathrooms=fields.get("bathrooms"),
+        area_sqm=fields.get("area_sqm"),
+        address=fields.get("address", "")[:255],
+        price_minor=price_minor,
+        currency=fields.get("currency") or bot.currency,
+        sort_order=fields.get("sort_order", 100),
+    )
+    bot.configuration.bump()
+    record_audit(
+        actor=actor, action="commerce.property_created", resource_type="property_listing",
+        resource_id=str(listing.pk), tenant=bot.tenant,
+    )
+    return listing
+
+
+@transaction.atomic
+def update_property(*, bot, property_id: int, actor, **fields) -> PropertyListing:
+    listing = PropertyListing.objects.filter(bot=bot, pk=property_id).first()
+    if listing is None:
+        raise NotFoundError()
+
+    changed: list[str] = []
+    for key in (
+        "title", "description", "listing_type", "property_type", "bedrooms", "bathrooms",
+        "area_sqm", "address", "price_minor", "currency", "is_active", "sort_order",
+    ):
+        if key in fields and fields[key] is not None:
+            setattr(listing, key, fields[key])
+            changed.append(key)
+
+    if changed:
+        listing.save(update_fields=[*changed, "updated_at"])
+        bot.configuration.bump()
+        record_audit(
+            actor=actor, action="commerce.property_updated", resource_type="property_listing",
+            resource_id=str(listing.pk), tenant=bot.tenant, metadata={"fields": changed},
+        )
+    return listing
+
+
+@transaction.atomic
+def delete_property(*, bot, property_id: int, actor) -> None:
+    listing = PropertyListing.objects.filter(bot=bot, pk=property_id).first()
+    if listing is None:
+        raise NotFoundError()
+    listing.delete()
+    bot.configuration.bump()
+    record_audit(
+        actor=actor, action="commerce.property_deleted", resource_type="property_listing",
+        resource_id=str(property_id), tenant=bot.tenant,
+    )
+
+
+@transaction.atomic
+def add_property_image(*, bot, property_id: int, actor, upload) -> PropertyImage:
+    from apps.core.files import PUBLIC_IMAGE_POLICY, validate_and_sanitise
+
+    listing = PropertyListing.objects.filter(bot=bot, pk=property_id).first()
+    if listing is None:
+        raise NotFoundError()
+
+    safe = validate_and_sanitise(upload, PUBLIC_IMAGE_POLICY)
+    image = PropertyImage(property=listing)
+    image.file.save(safe.filename, safe.content, save=False)
+    image.save()
+    bot.configuration.bump()
+    record_audit(
+        actor=actor, action="commerce.property_image_added", resource_type="property_image",
+        resource_id=str(image.pk), tenant=bot.tenant, metadata={"property": listing.pk},
+    )
+    return image
+
+
+@transaction.atomic
+def delete_property_image(*, bot, image_id: int, actor) -> None:
+    image = PropertyImage.objects.filter(property__bot=bot, pk=image_id).first()
+    if image is None:
+        raise NotFoundError()
+    image.file.delete(save=False)
+    image.delete()
+    bot.configuration.bump()
+    record_audit(
+        actor=actor, action="commerce.property_image_deleted", resource_type="property_image",
+        resource_id=str(image_id), tenant=bot.tenant,
+    )
+
+
+# --------------------------------------------------------------------------- courses
+
+
+def list_courses(bot_id: int) -> list[CourseOffering]:
+    return list(CourseOffering.objects.filter(bot_id=bot_id, is_active=True).order_by("sort_order", "id"))
+
+
+@transaction.atomic
+def create_course(*, bot, actor, title: str, price_minor: int, **fields) -> CourseOffering:
+    title = title.strip()
+    if not title:
+        raise ValidationError(code="commerce.course_title_required", field_errors={"title": ["Required."]})
+    if price_minor < 0:
+        raise ValidationError(code="commerce.invalid_price", field_errors={"price_minor": ["Must not be negative."]})
+
+    course = CourseOffering.objects.create(
+        tenant=bot.tenant,
+        bot=bot,
+        title=title[:128],
+        description=fields.get("description", ""),
+        instructor_name=fields.get("instructor_name", "")[:128],
+        price_minor=price_minor,
+        currency=fields.get("currency") or bot.currency,
+        starts_at=fields.get("starts_at"),
+        duration_label=fields.get("duration_label", "")[:64],
+        capacity=fields.get("capacity"),
+        sort_order=fields.get("sort_order", 100),
+    )
+    bot.configuration.bump()
+    record_audit(
+        actor=actor, action="commerce.course_created", resource_type="course_offering",
+        resource_id=str(course.pk), tenant=bot.tenant,
+    )
+    return course
+
+
+@transaction.atomic
+def update_course(*, bot, course_id: int, actor, **fields) -> CourseOffering:
+    course = CourseOffering.objects.filter(bot=bot, pk=course_id).first()
+    if course is None:
+        raise NotFoundError()
+
+    changed: list[str] = []
+    for key in (
+        "title", "description", "instructor_name", "price_minor", "currency", "starts_at",
+        "duration_label", "capacity", "enrolled_count", "is_active", "sort_order",
+    ):
+        if key in fields and fields[key] is not None:
+            setattr(course, key, fields[key])
+            changed.append(key)
+
+    if changed:
+        course.save(update_fields=[*changed, "updated_at"])
+        bot.configuration.bump()
+        record_audit(
+            actor=actor, action="commerce.course_updated", resource_type="course_offering",
+            resource_id=str(course.pk), tenant=bot.tenant, metadata={"fields": changed},
+        )
+    return course
+
+
+@transaction.atomic
+def delete_course(*, bot, course_id: int, actor) -> None:
+    course = CourseOffering.objects.filter(bot=bot, pk=course_id).first()
+    if course is None:
+        raise NotFoundError()
+    course.delete()
+    bot.configuration.bump()
+    record_audit(
+        actor=actor, action="commerce.course_deleted", resource_type="course_offering",
+        resource_id=str(course_id), tenant=bot.tenant,
+    )
+
+
+@transaction.atomic
+def set_course_thumbnail(*, bot, course_id: int, actor, upload) -> CourseOffering:
+    from apps.core.files import PUBLIC_IMAGE_POLICY, validate_and_sanitise
+
+    course = CourseOffering.objects.filter(bot=bot, pk=course_id).first()
+    if course is None:
+        raise NotFoundError()
+
+    safe = validate_and_sanitise(upload, PUBLIC_IMAGE_POLICY)
+    if course.thumbnail:
+        course.thumbnail.delete(save=False)
+    course.thumbnail.save(safe.filename, safe.content, save=False)
+    course.save(update_fields=["thumbnail", "updated_at"])
+    bot.configuration.bump()
+    record_audit(
+        actor=actor, action="commerce.course_thumbnail_set", resource_type="course_offering",
+        resource_id=str(course.pk), tenant=bot.tenant,
+    )
+    return course
 
 
 # --------------------------------------------------------------------------- cart

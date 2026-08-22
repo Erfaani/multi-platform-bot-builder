@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import re
+
 from django.db import transaction
 from django.utils import timezone
 
 from apps.audit.services import record_audit
 from apps.bots import credentials as credential_service
-from apps.bots.models import Bot, BotPlatformInstance
+from apps.bots.models import Bot, BotPlatformInstance, InputRestrictionPolicy
 from apps.core.errors import ConflictError, NotFoundError
 from apps.platforms.transport import PlatformApiError
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 @transaction.atomic
@@ -69,6 +73,59 @@ def submit_customer_token(*, instance: BotPlatformInstance, token: str, user) ->
 
     # Resume the saga now that the thing it was waiting for exists.
     transaction.on_commit(lambda: _resume_provisioning(instance))
+    return instance
+
+
+def rotate_webhook(*, instance: BotPlatformInstance, actor) -> BotPlatformInstance:
+    """Re-register the webhook with a fresh secret, customer-triggered.
+
+    Same call shape `apps.subscriptions.services._reactivate_runtime` already uses to
+    restore a suspended bot's webhook — here it is invoked directly, on demand, for a
+    still-active instance (e.g. after a customer suspects their bot's secret leaked).
+    """
+    if instance.status != BotPlatformInstance.Status.ACTIVE:
+        raise ConflictError(
+            code="bots.instance_not_active",
+            message="This channel is not active yet.",
+        )
+
+    from apps.provisioning.provisioners import get_provisioner
+    from apps.provisioning.saga import rotate_webhook_secret, webhook_url_for
+
+    provisioner = get_provisioner(instance.platform)
+    if provisioner is None:
+        raise ConflictError(
+            code="bots.platform_unavailable",
+            message="This platform is not available yet.",
+        )
+
+    secret = rotate_webhook_secret(instance)
+    url = webhook_url_for(instance)
+    token = credential_service.read_token(instance=instance, purpose="rotate_webhook")
+    try:
+        provisioner.set_webhook(token, url, secret)
+    except PlatformApiError as exc:
+        # Most likely cause: the platform revoked or invalidated the token since it was
+        # issued. Surface it as a clean, actionable error rather than a 500 — the fresh
+        # secret above is harmless to leave in place, the next successful rotation (or
+        # provisioning run) supersedes it.
+        raise ConflictError(
+            code="bots.webhook_rotation_failed",
+            message=f"Could not reconnect this channel: {exc}",
+        ) from None
+
+    instance.webhook_url = url
+    instance.webhook_set_at = timezone.now()
+    instance.save(update_fields=["webhook_url", "webhook_set_at", "updated_at"])
+
+    record_audit(
+        actor=actor,
+        action="bot.webhook_rotated",
+        resource_type="bot_platform_instance",
+        resource_id=str(instance.public_id),
+        tenant=instance.bot.tenant,
+        metadata={"platform": instance.platform},
+    )
     return instance
 
 
@@ -191,3 +248,85 @@ def get_bot_for_tenant(*, public_id: str, tenant) -> Bot:
 
 def touch_activity(bot_id: int) -> None:
     Bot.objects.filter(pk=bot_id).update(last_activity_at=timezone.now())
+
+
+# --------------------------------------------------------------------------- input restrictions
+
+
+def get_input_restrictions(bot_id: int) -> InputRestrictionPolicy:
+    """Read path for the bot runtime — no `Bot` instance needed, just the id."""
+    policy, _ = InputRestrictionPolicy.objects.get_or_create(bot_id=bot_id)
+    return policy
+
+
+@transaction.atomic
+def update_input_restrictions(*, bot: Bot, actor, **fields) -> InputRestrictionPolicy:
+    policy, _ = InputRestrictionPolicy.objects.get_or_create(bot=bot)
+
+    changed: list[str] = []
+    for key in (
+        "allowed_calling_codes",
+        "blocked_phone_numbers",
+        "collect_email_on_consultation",
+        "allowed_email_domains",
+        "blocked_email_domains",
+        "strict_email_format",
+    ):
+        if key not in fields or fields[key] is None:
+            continue
+        value = fields[key]
+        if key == "blocked_phone_numbers":
+            value = sorted({digits for n in value if (digits := _digits_only(n))})
+        elif key in ("allowed_email_domains", "blocked_email_domains"):
+            value = sorted({d.strip().lower().lstrip("@") for d in value if d.strip()})
+        elif key == "allowed_calling_codes":
+            value = sorted({c.strip() for c in value if c.strip()})
+        setattr(policy, key, value)
+        changed.append(key)
+
+    if changed:
+        policy.save(update_fields=[*changed, "updated_at"])
+        record_audit(
+            actor=actor,
+            action="bots.input_restrictions_updated",
+            resource_type="bot",
+            resource_id=str(bot.public_id),
+            tenant=bot.tenant,
+            metadata={"fields": changed},
+        )
+    return policy
+
+
+def _digits_only(text: str) -> str:
+    return "".join(ch for ch in text if ch.isdigit())
+
+
+def is_phone_allowed(policy: InputRestrictionPolicy, text: str) -> bool:
+    digits = _digits_only(text)
+    if digits and digits in policy.blocked_phone_numbers:
+        return False
+
+    if policy.allowed_calling_codes:
+        candidate = text.strip()
+        if not candidate.startswith("+"):
+            candidate = "+" + digits
+        if not any(candidate.startswith(code) for code in policy.allowed_calling_codes):
+            return False
+
+    return True
+
+
+def is_email_allowed(policy: InputRestrictionPolicy, text: str) -> bool:
+    email = text.strip().lower()
+    if policy.strict_email_format and not _EMAIL_RE.match(email):
+        return False
+    if "@" not in email:
+        return False
+
+    domain = email.rsplit("@", 1)[-1]
+    if domain in policy.blocked_email_domains:
+        return False
+    if policy.allowed_email_domains and domain not in policy.allowed_email_domains:
+        return False
+
+    return True

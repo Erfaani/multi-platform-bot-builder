@@ -88,11 +88,19 @@ class InboundEvent:
 
 @dataclass(frozen=True, slots=True)
 class Choice:
-    """One option offered to the user. ``label_key`` is a translation key, never text."""
+    """One option offered to the user. ``label_key`` is a translation key, never text.
+
+    ``web_app_url``, when set, is what a capable client (Telegram) opens as a Mini App
+    instead of sending a callback. ``value`` is still required and still signed — the
+    degradation ladder falls back to it wherever ``Capabilities.web_app`` is false (Bale
+    today), so a feature that offers a Mini App never has to special-case the platform
+    that cannot open one.
+    """
 
     label_key: str
     value: str
     params: dict[str, Any] = field(default_factory=dict)
+    web_app_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +136,10 @@ class RenderedMessage:
 
     text: str
     buttons: list[list[str]] = field(default_factory=list)
+    #: Parallel to `buttons` — same row/column shape, `None` wherever that button is an
+    #: ordinary (callback) one. Only ever populated when the layout is INLINE and the
+    #: platform's `Capabilities.web_app` is true.
+    web_app_urls: list[list[str | None]] = field(default_factory=list)
     layout: ButtonLayout = ButtonLayout.NONE
     attachments: list[Attachment] = field(default_factory=list)
     expects: str | None = None

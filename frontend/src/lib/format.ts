@@ -25,6 +25,17 @@ export function toPersianDigits(value: string): string {
   return value.replace(/\d/g, (digit) => PERSIAN_DIGITS[Number(digit)]);
 }
 
+/**
+ * The currency a price should default to for a given site locale — `fa` implies Iranian
+ * customers (Rial, shown as Toman by `formatMoney`), `en` defaults to USD. This is a
+ * *default*, not a hard rule: a signed-in user's own `preferred_currency` (or their
+ * workspace's `default_currency`) takes precedence when known, and the builder still
+ * lets a visitor override it explicitly — see `frontend/src/app/[locale]/build/page.tsx`.
+ */
+export function localeCurrency(locale: Locale): string {
+  return locale === "fa" ? "IRR" : "USD";
+}
+
 export function formatNumber(value: number, locale: Locale, decimals = 0): string {
   return new Intl.NumberFormat(locale === "fa" ? "fa-IR" : "en-US", {
     minimumFractionDigits: decimals,

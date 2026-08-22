@@ -141,6 +141,111 @@ def step_enable_features(ctx: StepContext) -> dict:
     return {"features": len(ctx.order.features), "newly_enabled": enabled}
 
 
+def step_seed_collected_content(ctx: StepContext) -> dict:
+    """Materialize content the customer typed into the builder's per-feature
+    configuration steps (dynamic configuration, Phase 10.5) — before this, that content
+    only existed as a draft on the quote/order; this is what turns it into real, live
+    rows the moment the bot activates, not something the customer has to re-enter from
+    the management panel after paying.
+
+    Re-validates against each feature's own `CollectSchema` rather than trusting
+    `business_snapshot` as already-clean — `BuildQuoteSerializer.validate()` cleans it
+    once at quote-build time, but this step must hold regardless of what wrote the
+    snapshot (a future non-web ordering path, a resumed job, a hand-edited fixture).
+    """
+    from apps.businesses.services import create_faq_entry
+    from apps.commerce.services import create_course, create_property
+    from apps.core.formatting import get_exponent
+    from apps.core.money import Money
+    from apps.features.manifests import validate_collected_items
+    from apps.features.registry import all_manifests
+
+    bot = _require_bot(ctx)
+    feature_config = (ctx.order.business_snapshot or {}).get("feature_config") or {}
+    manifests = all_manifests()
+    created_counts: dict[str, int] = {}
+
+    def _items_for(slug: str) -> list[dict[str, str]]:
+        if slug not in feature_config or slug not in ctx.order.features:
+            return []
+        manifest = manifests.get(slug)
+        if manifest is None or manifest.collects is None:
+            return []
+        return validate_collected_items(manifest.collects, feature_config[slug])
+
+    def _price_minor(raw: str) -> int | None:
+        """A customer types a price in normal terms ("250000", "199.99") — parsed
+        against the bot's own currency exponent, same conversion `Money.from_major`
+        already does everywhere else in this codebase. `None` (not zero) for anything
+        unparseable, so a typo drops just that one item rather than pricing it free."""
+        from decimal import InvalidOperation
+
+        try:
+            return Money.from_major(raw, bot.currency, get_exponent(bot.currency)).amount_minor
+        except (InvalidOperation, ValueError):
+            return None
+
+    if "faq" in feature_config and "faq" in ctx.order.features:
+        # Idempotent by presence, like the rest of this step's siblings' `get_or_create`
+        # calls — a resumed run must not duplicate entries a prior attempt already wrote.
+        if not bot.faq_entries.exists():
+            items = _items_for("faq")
+            for index, item in enumerate(items):
+                create_faq_entry(
+                    bot=bot,
+                    actor=None,
+                    question=item["question"],
+                    answer=item["answer"],
+                    sort_order=index * 10,
+                )
+            created_counts["faq"] = len(items)
+
+    if not bot.property_listings.exists():
+        items = _items_for("property_listings")
+        made = 0
+        for index, item in enumerate(items):
+            price_minor = _price_minor(item.get("price", ""))
+            if price_minor is None:
+                continue
+            create_property(
+                bot=bot,
+                actor=None,
+                title=item["title"],
+                listing_type=item["listing_type"],
+                property_type=item["property_type"],
+                price_minor=price_minor,
+                address=item.get("address", ""),
+                description=item.get("description", ""),
+                sort_order=index * 10,
+            )
+            made += 1
+        if made:
+            created_counts["property_listings"] = made
+
+    if not bot.course_offerings.exists():
+        items = _items_for("course_catalog")
+        made = 0
+        for index, item in enumerate(items):
+            price_minor = _price_minor(item.get("price", ""))
+            if price_minor is None:
+                continue
+            create_course(
+                bot=bot,
+                actor=None,
+                title=item["title"],
+                price_minor=price_minor,
+                instructor_name=item.get("instructor_name", ""),
+                duration_label=item.get("duration_label", ""),
+                description=item.get("description", ""),
+                sort_order=index * 10,
+            )
+            made += 1
+        if made:
+            created_counts["course_catalog"] = made
+
+    return created_counts
+
+
 def step_acquire_credential(ctx: StepContext) -> dict:
     """Obtain a token for every instance, per the order's strategy."""
     bot = _require_bot(ctx)
@@ -369,6 +474,7 @@ class Step:
 STEPS: tuple[Step, ...] = (
     Step("create_bot_record", step_create_bot_record, OrderStatus.PROVISIONING),
     Step("enable_features", step_enable_features, OrderStatus.PROVISIONING),
+    Step("seed_collected_content", step_seed_collected_content, OrderStatus.PROVISIONING),
     Step("acquire_credential", step_acquire_credential, OrderStatus.PROVISIONING),
     Step("verify_get_me", step_verify_get_me, OrderStatus.PROVISIONING),
     Step("apply_configuration", step_apply_configuration, OrderStatus.CONFIGURING),
@@ -385,6 +491,11 @@ STEPS: tuple[Step, ...] = (
 ADDON_STEPS: tuple[Step, ...] = (
     Step("addon_bind_bot", step_addon_bind_bot, OrderStatus.PROVISIONING),
     Step("enable_features", step_enable_features, OrderStatus.PROVISIONING),
+    # `seed_collected_content` deliberately omitted: nothing today gives an add-on order
+    # a `feature_config` to seed (`AddonFeaturesPanel` is a plain checkout, not a
+    # configuration wizard) — adding a step with no real caller would just dilute this
+    # saga's intentionally minimal four steps for a benefit that doesn't exist yet. Add
+    # it here the day an add-on purchase actually collects per-feature content.
     # Tagged DEPLOYING, not CONFIGURING: the state machine has no CONFIGURING → ACTIVE
     # edge, only CONFIGURING → DEPLOYING → ACTIVE. This is what makes `_advance_order_to`
     # walk the order all the way to DEPLOYING before `addon_activate` closes it out.

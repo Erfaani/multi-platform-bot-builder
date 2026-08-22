@@ -93,6 +93,29 @@ def language_command(event, session, ctx, value: str = "", locale: str = "en") -
     )
 
 
+@route("core:open_app")
+def open_app(event, session, ctx, value: str = "", locale: str = "en") -> HandlerResult:
+    """Launch the Mini App (Phase 10.5). `Capabilities.web_app` is false for Bale
+    (`apps.platforms.bale.adapter`), so this degrades to an explanatory message there
+    rather than a button nobody can tap."""
+    if ctx.platform != "telegram":
+        return HandlerResult(
+            reply=Reply(text_key="bot.miniapp.unavailable", choices=_menu_choices(ctx)),
+            next_state="IDLE",
+        )
+
+    from django.conf import settings
+
+    url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/{locale}/miniapp/{ctx.instance_public_id}"
+    return HandlerResult(
+        reply=Reply(
+            text_key="bot.miniapp.launch",
+            choices=[Choice(label_key="menu.open_app", value="core:open_app.go", web_app_url=url)],
+        ),
+        next_state="IDLE",
+    )
+
+
 @route("business:about")
 def about(event, session, ctx, value: str = "", locale: str = "en") -> HandlerResult:
     business = _business(ctx)

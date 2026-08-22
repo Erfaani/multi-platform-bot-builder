@@ -33,15 +33,15 @@ export function LanguageSwitcher() {
   }
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1 rounded-full bg-white/10 p-1">
       {LOCALES.map((option) => (
         <button
           key={option}
           type="button"
           onClick={() => void switchTo(option)}
           aria-current={option === locale ? "true" : undefined}
-          className={`rounded-md px-2 py-1 text-xs transition ${
-            option === locale ? "bg-accent text-white" : "text-muted hover:text-ink"
+          className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+            option === locale ? "bg-accent text-white" : "text-white/70 hover:text-white"
           }`}
         >
           {LABELS[option]}

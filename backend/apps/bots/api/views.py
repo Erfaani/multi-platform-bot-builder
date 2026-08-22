@@ -22,6 +22,7 @@ from apps.appointments.api.serializers import (
     AppointmentServiceWriteSerializer,
     AvailableSlotsRequestSerializer,
     CancelAppointmentSerializer,
+    RescheduleAppointmentSerializer,
     SlotSerializer,
     StaffMemberSerializer,
     StaffMemberWriteSerializer,
@@ -39,22 +40,34 @@ from apps.bots.api.serializers import (
     FaqEntryCreateSerializer,
     FaqEntrySerializer,
     FaqEntryUpdateSerializer,
+    InputRestrictionPolicySerializer,
+    InputRestrictionPolicyWriteSerializer,
     SubmitTokenSerializer,
+    WorkingHoursWriteSerializer,
 )
 from apps.bots.models import Bot, BotPlatformInstance
 from apps.bots.services import (
     available_addon_features,
+    rotate_webhook,
     submit_customer_token,
     update_configuration,
+    update_input_restrictions,
 )
 from apps.businesses import services as business_services
 from apps.commerce import services as commerce_services
 from apps.commerce.api.serializers import (
     BusinessOrderSerializer,
+    CourseOfferingSerializer,
+    CourseOfferingWriteSerializer,
+    ImageUploadSerializer,
     ProductCategorySerializer,
     ProductCategoryWriteSerializer,
+    ProductImageSerializer,
     ProductSerializer,
     ProductWriteSerializer,
+    PropertyImageSerializer,
+    PropertyListingSerializer,
+    PropertyListingWriteSerializer,
     TableReservationSerializer,
 )
 from apps.core.api.viewsets import TenantScopedReadOnlyViewSet
@@ -118,6 +131,19 @@ class BotViewSet(TenantScopedReadOnlyViewSet):
         bot.refresh_from_db()
         return Response(BotSerializer(bot).data)
 
+    @extend_schema(request=None, responses=BotSerializer)
+    @action(detail=True, methods=["post"], url_path=r"instances/(?P<instance_id>[^/.]+)/rotate-webhook")
+    def rotate_instance_webhook(self, request: Request, public_id: str, instance_id: str) -> Response:
+        """Customer-triggered: re-register the webhook with a fresh secret."""
+        bot = self.get_object()
+        instance = BotPlatformInstance.objects.filter(bot=bot, public_id=instance_id).first()
+        if instance is None:
+            raise NotFoundError()
+
+        rotate_webhook(instance=instance, actor=request.user)
+        bot.refresh_from_db()
+        return Response(BotSerializer(bot).data)
+
     # -- business profile (spec §24) --------------------------------------
     @extend_schema(
         request=BusinessProfileUpdateSerializer,
@@ -137,6 +163,53 @@ class BotViewSet(TenantScopedReadOnlyViewSet):
             bot=bot, actor=request.user, **serializer.validated_data
         )
         return Response(BusinessProfileSerializer(profile).data)
+
+    @extend_schema(request=ImageUploadSerializer, responses=BusinessProfileSerializer)
+    @action(detail=True, methods=["post"], url_path="business-profile/logo")
+    def business_profile_logo(self, request: Request, public_id: str) -> Response:
+        bot = self.get_object()
+        serializer = ImageUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        profile = business_services.set_business_logo(
+            bot=bot, actor=request.user, upload=serializer.validated_data["file"]
+        )
+        return Response(BusinessProfileSerializer(profile).data)
+
+    # -- working hours (spec §24) --------------------------------------------
+    @extend_schema(request=WorkingHoursWriteSerializer, responses={200: WorkingHoursWriteSerializer})
+    @action(detail=True, methods=["get", "put"], url_path="working-hours")
+    def working_hours(self, request: Request, public_id: str) -> Response:
+        bot = self.get_object()
+
+        if request.method == "GET":
+            rows = business_services.list_working_hours(bot.pk)
+            return Response(WorkingHoursWriteSerializer({"days": rows}).data)
+
+        serializer = WorkingHoursWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        rows = business_services.set_working_hours(
+            bot=bot, actor=request.user, days=serializer.validated_data["days"]
+        )
+        return Response(WorkingHoursWriteSerializer({"days": rows}).data)
+
+    # -- input restrictions (spec §24, configurable validation) ---------------
+    @extend_schema(
+        request=InputRestrictionPolicyWriteSerializer, responses={200: InputRestrictionPolicySerializer}
+    )
+    @action(detail=True, methods=["get", "patch"], url_path="input-restrictions")
+    def input_restrictions(self, request: Request, public_id: str) -> Response:
+        from apps.bots.services import get_input_restrictions
+
+        bot = self.get_object()
+
+        if request.method == "GET":
+            policy = get_input_restrictions(bot.pk)
+            return Response(InputRestrictionPolicySerializer(policy).data)
+
+        serializer = InputRestrictionPolicyWriteSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        policy = update_input_restrictions(bot=bot, actor=request.user, **serializer.validated_data)
+        return Response(InputRestrictionPolicySerializer(policy).data)
 
     # -- FAQ ----------------------------------------------------------------
     @extend_schema(
@@ -331,6 +404,21 @@ class BotViewSet(TenantScopedReadOnlyViewSet):
         )
         return Response(AppointmentSerializer(cancelled).data)
 
+    @extend_schema(request=RescheduleAppointmentSerializer, responses=AppointmentSerializer)
+    @action(detail=True, methods=["post"], url_path=r"appointments/(?P<appointment_id>[^/.]+)/reschedule")
+    def reschedule_appointment(self, request: Request, public_id: str, appointment_id: str) -> Response:
+        bot = self.get_object()
+        appointment = Appointment.objects.filter(bot=bot, public_id=appointment_id).first()
+        if appointment is None:
+            raise NotFoundError()
+
+        serializer = RescheduleAppointmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        rescheduled = appointment_services.reschedule_appointment(
+            appointment=appointment, actor=request.user, starts_at=serializer.validated_data["starts_at"]
+        )
+        return Response(AppointmentSerializer(rescheduled).data)
+
     # -- customer broadcast (spec's notifications module) ---------------------
     @extend_schema(request=BroadcastSerializer, responses={200: None})
     @action(detail=True, methods=["post"], url_path="broadcast")
@@ -455,6 +543,122 @@ class BotViewSet(TenantScopedReadOnlyViewSet):
             bot=bot, product_id=int(product_id), actor=request.user, **serializer.validated_data
         )
         return Response(ProductSerializer(updated, context=self.get_serializer_context()).data)
+
+    @extend_schema(request=ImageUploadSerializer, responses={201: ProductImageSerializer})
+    @action(detail=True, methods=["post"], url_path=r"products/(?P<product_id>\d+)/images")
+    def product_images(self, request: Request, public_id: str, product_id: str) -> Response:
+        bot = self.get_object()
+        serializer = ImageUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        image = commerce_services.add_product_image(
+            bot=bot, product_id=int(product_id), actor=request.user,
+            upload=serializer.validated_data["file"],
+        )
+        return Response(ProductImageSerializer(image).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["delete"], url_path=r"product-images/(?P<image_id>\d+)")
+    def product_image_detail(self, request: Request, public_id: str, image_id: str) -> Response:
+        bot = self.get_object()
+        commerce_services.delete_product_image(bot=bot, image_id=int(image_id), actor=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # -- commerce: property listings ------------------------------------------------
+    @extend_schema(request=PropertyListingWriteSerializer, responses={200: PropertyListingSerializer(many=True)})
+    @action(detail=True, methods=["get", "post"], url_path="properties")
+    def properties(self, request: Request, public_id: str) -> Response:
+        bot = self.get_object()
+
+        if request.method == "GET":
+            listings = commerce_services.list_properties(bot.pk)
+            return Response(PropertyListingSerializer(listings, many=True, context=self.get_serializer_context()).data)
+
+        serializer = PropertyListingWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        created = commerce_services.create_property(bot=bot, actor=request.user, **serializer.validated_data)
+        return Response(
+            PropertyListingSerializer(created, context=self.get_serializer_context()).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(request=PropertyListingWriteSerializer, responses=PropertyListingSerializer)
+    @action(detail=True, methods=["patch", "delete"], url_path=r"properties/(?P<property_id>\d+)")
+    def property_detail(self, request: Request, public_id: str, property_id: str) -> Response:
+        bot = self.get_object()
+
+        if request.method == "DELETE":
+            commerce_services.delete_property(bot=bot, property_id=int(property_id), actor=request.user)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        serializer = PropertyListingWriteSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated = commerce_services.update_property(
+            bot=bot, property_id=int(property_id), actor=request.user, **serializer.validated_data
+        )
+        return Response(PropertyListingSerializer(updated, context=self.get_serializer_context()).data)
+
+    @extend_schema(request=ImageUploadSerializer, responses={201: PropertyImageSerializer})
+    @action(detail=True, methods=["post"], url_path=r"properties/(?P<property_id>\d+)/images")
+    def property_images(self, request: Request, public_id: str, property_id: str) -> Response:
+        bot = self.get_object()
+        serializer = ImageUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        image = commerce_services.add_property_image(
+            bot=bot, property_id=int(property_id), actor=request.user,
+            upload=serializer.validated_data["file"],
+        )
+        return Response(PropertyImageSerializer(image).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["delete"], url_path=r"property-images/(?P<image_id>\d+)")
+    def property_image_detail(self, request: Request, public_id: str, image_id: str) -> Response:
+        bot = self.get_object()
+        commerce_services.delete_property_image(bot=bot, image_id=int(image_id), actor=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # -- commerce: courses -----------------------------------------------------------
+    @extend_schema(request=CourseOfferingWriteSerializer, responses={200: CourseOfferingSerializer(many=True)})
+    @action(detail=True, methods=["get", "post"], url_path="courses")
+    def courses(self, request: Request, public_id: str) -> Response:
+        bot = self.get_object()
+
+        if request.method == "GET":
+            courses = commerce_services.list_courses(bot.pk)
+            return Response(CourseOfferingSerializer(courses, many=True, context=self.get_serializer_context()).data)
+
+        serializer = CourseOfferingWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        created = commerce_services.create_course(bot=bot, actor=request.user, **serializer.validated_data)
+        return Response(
+            CourseOfferingSerializer(created, context=self.get_serializer_context()).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(request=CourseOfferingWriteSerializer, responses=CourseOfferingSerializer)
+    @action(detail=True, methods=["patch", "delete"], url_path=r"courses/(?P<course_id>\d+)")
+    def course_detail(self, request: Request, public_id: str, course_id: str) -> Response:
+        bot = self.get_object()
+
+        if request.method == "DELETE":
+            commerce_services.delete_course(bot=bot, course_id=int(course_id), actor=request.user)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        serializer = CourseOfferingWriteSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated = commerce_services.update_course(
+            bot=bot, course_id=int(course_id), actor=request.user, **serializer.validated_data
+        )
+        return Response(CourseOfferingSerializer(updated, context=self.get_serializer_context()).data)
+
+    @extend_schema(request=ImageUploadSerializer, responses=CourseOfferingSerializer)
+    @action(detail=True, methods=["post"], url_path=r"courses/(?P<course_id>\d+)/thumbnail")
+    def course_thumbnail(self, request: Request, public_id: str, course_id: str) -> Response:
+        bot = self.get_object()
+        serializer = ImageUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        course = commerce_services.set_course_thumbnail(
+            bot=bot, course_id=int(course_id), actor=request.user,
+            upload=serializer.validated_data["file"],
+        )
+        return Response(CourseOfferingSerializer(course, context=self.get_serializer_context()).data)
 
     # -- commerce: orders & table reservations -------------------------------------
     @extend_schema(responses=BusinessOrderSerializer(many=True))

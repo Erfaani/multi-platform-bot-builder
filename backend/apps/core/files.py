@@ -72,6 +72,18 @@ DOCUMENT_POLICY = UploadPolicy(
     reencode_images=False,
 )
 
+#: Product/property/course photos — the one kind of upload in this codebase meant to be
+#: *publicly* viewable rather than kept private like receipts or AI documents. The
+#: policy itself is identical to `LOGO_POLICY` (images only, re-encoded to strip
+#: metadata); what differs is where the caller stores the result — see
+#: `apps.commerce.models._public_upload_to` and `config/urls.py`'s dev-only public
+#: media route, which is scoped to exactly the `public/` prefix these uploads use.
+PUBLIC_IMAGE_POLICY = UploadPolicy(
+    allowed_types=frozenset({"image/jpeg", "image/png", "image/webp"}),
+    allowed_extensions=frozenset({".jpg", ".jpeg", ".png", ".webp"}),
+    max_bytes=5 * 1024 * 1024,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class SafeUpload:
@@ -81,6 +93,21 @@ class SafeUpload:
     size_bytes: int
     sha256: str
     original_filename: str
+
+
+def public_file_url(file_field) -> str:
+    """The servable URL for a `public/`-prefixed `FileField` (`PUBLIC_IMAGE_POLICY`
+    uploads). Deliberately not `file_field.url` — `Storage.url()` is built from
+    `settings.MEDIA_URL`, which stays `None` on purpose (SECURITY.md §7: nothing is
+    servable from the bare media root). This constructs the URL from
+    `settings.PUBLIC_MEDIA_URL` instead, matching the one route `config/urls.py` (dev)
+    or object storage/CDN (production) actually exposes."""
+    if not file_field:
+        return ""
+    from django.conf import settings
+
+    relative = file_field.name.removeprefix("public/")
+    return f"{settings.PUBLIC_MEDIA_URL}{relative}"
 
 
 def sniff_content_type(head: bytes) -> str | None:

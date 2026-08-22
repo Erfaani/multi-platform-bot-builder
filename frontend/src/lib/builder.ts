@@ -44,6 +44,35 @@ export interface PlatformAvailability {
   note: string;
 }
 
+export interface CollectOption {
+  value: string;
+  label_key: string;
+}
+
+/** One input within a single collected item — e.g. FAQ's "question" and "answer", or a
+ * property's "listing type". */
+export interface CollectItemField {
+  key: string;
+  label_key: string;
+  kind: "text" | "textarea" | "select";
+  required: boolean;
+  max_length: number;
+  /** Only meaningful when `kind === "select"`. */
+  options: CollectOption[];
+}
+
+/** Declares that a feature needs specific content from the customer — read by the
+ * builder to insert a feature-specific step instead of asking a generic question.
+ * Mirrors `apps.features.manifests.CollectSchema` on the backend exactly. */
+export interface CollectSchema {
+  kind: "repeatable_form" | "single_choice";
+  title_key: string;
+  hint_key: string;
+  add_label_key: string;
+  max_items: number;
+  fields: CollectItemField[];
+}
+
 export interface FeatureItem {
   id: string;
   slug: string;
@@ -55,6 +84,7 @@ export interface FeatureItem {
   always_on: boolean;
   platforms: Record<string, PlatformAvailability>;
   sort_order: number;
+  collects: CollectSchema | null;
 }
 
 export interface QuoteItemView {

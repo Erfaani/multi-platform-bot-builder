@@ -12,7 +12,7 @@ from apps.crm.models import ContactNote, Feedback, Lead, LeadStatus, Tag
 
 
 @transaction.atomic
-def create_lead(*, bot, contact, source: str, message: str = "", phone: str = "") -> Lead:
+def create_lead(*, bot, contact, source: str, message: str = "", phone: str = "", email: str = "") -> Lead:
     lead = Lead.objects.create(
         tenant=bot.tenant,
         bot=bot,
@@ -20,6 +20,7 @@ def create_lead(*, bot, contact, source: str, message: str = "", phone: str = ""
         source=source,
         message=message[:4000],
         phone=phone[:32],
+        email=email[:254],
     )
     record_audit(
         actor=None,

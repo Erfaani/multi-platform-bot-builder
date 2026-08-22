@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Bot } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useIntl, useTranslations } from "@/i18n/provider";
 import { checkoutApi } from "@/lib/checkout";
@@ -27,12 +28,12 @@ function NotificationBell() {
   return (
     <Link
       href={`/${locale}/notifications`}
-      className="relative text-muted hover:text-ink"
+      className="relative text-sm font-medium text-white/70 hover:text-white"
       aria-label={t("notifications.title")}
     >
       {t("notifications.title")}
       {unread > 0 ? (
-        <span className="absolute -end-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] text-white">
+        <span className="absolute -end-2.5 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-secondary px-1 text-[10px] font-semibold text-white">
           {unread > 99 ? "99+" : unread}
         </span>
       ) : null}
@@ -46,54 +47,94 @@ export function SiteHeader() {
   const { user, logout, loading } = useAuth();
 
   return (
-    <header className="flex items-center justify-between gap-4 border-b border-line py-4">
-      <Link href={`/${locale}`} className="font-semibold">
-        {t("brand.name")}
-      </Link>
-
-      <nav className="flex flex-wrap items-center gap-3 text-sm">
-        <Link href={`/${locale}/templates`} className="hidden text-muted hover:text-ink sm:inline">
-          {t("nav.templates")}
-        </Link>
-        <Link href={`/${locale}/features`} className="hidden text-muted hover:text-ink sm:inline">
-          {t("nav.features")}
-        </Link>
-        <Link href={`/${locale}/pricing`} className="hidden text-muted hover:text-ink sm:inline">
-          {t("nav.pricing")}
-        </Link>
-        <Link href={`/${locale}/build`} className="text-accent hover:opacity-80">
-          {t("nav.build")}
+    <header className="sticky top-0 z-20 bg-dark shadow-[0_1px_0_0_rgba(255,255,255,0.06)]">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
+        <Link href={`/${locale}`} className="flex items-center gap-2.5">
+          <span className="icon-badge bg-accent">
+            <Bot className="h-5 w-5 text-white" strokeWidth={2.25} />
+          </span>
+          <span className="text-lg font-bold tracking-tight text-white">{t("brand.name")}</span>
         </Link>
 
-        <LanguageSwitcher />
+        <nav className="flex flex-wrap items-center gap-1 text-sm">
+          <Link
+            href={`/${locale}/templates`}
+            className="hidden rounded-full px-3 py-1.5 font-medium text-white/70 transition hover:text-white sm:inline-block"
+          >
+            {t("nav.templates")}
+          </Link>
+          <Link
+            href={`/${locale}/features`}
+            className="hidden rounded-full px-3 py-1.5 font-medium text-white/70 transition hover:text-white sm:inline-block"
+          >
+            {t("nav.features")}
+          </Link>
+          <Link
+            href={`/${locale}/pricing`}
+            className="hidden rounded-full px-3 py-1.5 font-medium text-white/70 transition hover:text-white sm:inline-block"
+          >
+            {t("nav.pricing")}
+          </Link>
+          <Link
+            href={`/${locale}/build`}
+            className="mx-1 inline-flex items-center justify-center rounded-full bg-accent px-4 py-1.5 font-semibold text-white shadow-sm transition hover:bg-accent-strong"
+          >
+            {t("nav.build")}
+          </Link>
 
-        {loading ? null : user ? (
-          <>
-            <Link href={`/${locale}/dashboard`} className="text-muted hover:text-ink">
-              {t("nav.dashboard")}
-            </Link>
-            <Link href={`/${locale}/support`} className="hidden text-muted hover:text-ink sm:inline">
-              {t("nav.support")}
-            </Link>
-            <Link href={`/${locale}/settings`} className="hidden text-muted hover:text-ink sm:inline">
-              {t("nav.settings")}
-            </Link>
-            <NotificationBell />
-            <button type="button" onClick={logout} className="text-muted hover:text-ink">
-              {t("nav.logout")}
-            </button>
-          </>
-        ) : (
-          <>
-            <Link href={`/${locale}/login`} className="text-muted hover:text-ink">
-              {t("nav.login")}
-            </Link>
-            <Link href={`/${locale}/register`} className="btn-primary">
-              {t("nav.register")}
-            </Link>
-          </>
-        )}
-      </nav>
+          <span className="mx-1 hidden h-5 w-px bg-white/15 sm:inline-block" />
+
+          <LanguageSwitcher />
+
+          {loading ? null : user ? (
+            <>
+              <Link
+                href={`/${locale}/dashboard`}
+                className="rounded-full px-3 py-1.5 font-medium text-white/70 transition hover:text-white"
+              >
+                {t("nav.dashboard")}
+              </Link>
+              <Link
+                href={`/${locale}/support`}
+                className="hidden rounded-full px-3 py-1.5 font-medium text-white/70 transition hover:text-white sm:inline-block"
+              >
+                {t("nav.support")}
+              </Link>
+              <Link
+                href={`/${locale}/settings`}
+                className="hidden rounded-full px-3 py-1.5 font-medium text-white/70 transition hover:text-white sm:inline-block"
+              >
+                {t("nav.settings")}
+              </Link>
+              <span className="px-2">
+                <NotificationBell />
+              </span>
+              <button
+                type="button"
+                onClick={logout}
+                className="rounded-full px-3 py-1.5 font-medium text-white/70 transition hover:text-white"
+              >
+                {t("nav.logout")}
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                href={`/${locale}/login`}
+                className="rounded-full px-3 py-1.5 font-medium text-white/70 transition hover:text-white"
+              >
+                {t("nav.login")}
+              </Link>
+              <Link
+                href={`/${locale}/register`}
+                className="inline-flex items-center justify-center rounded-full border border-white/20 px-4 py-1.5 font-semibold text-white transition hover:border-white/40 hover:bg-white/5"
+              >
+                {t("nav.register")}
+              </Link>
+            </>
+          )}
+        </nav>
+      </div>
     </header>
   );
 }

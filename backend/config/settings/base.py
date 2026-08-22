@@ -80,6 +80,12 @@ LOCAL_APPS = [
     "apps.ai",
     # Phase 9 — subscriptions
     "apps.subscriptions",
+    # Phase 10.5 — owner admin menu inside the bot
+    "apps.bot_admin",
+    # Phase 10.5 — chat-native bot ordering (the platform's own builder bot)
+    "apps.bot_builder",
+    # Phase 10.5 — Telegram Mini App (end-user storefront/booking)
+    "apps.miniapp",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -315,9 +321,14 @@ STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
-# User uploads are NEVER served publicly; see SECURITY.md §7.
+# User uploads are NEVER served publicly by default; see SECURITY.md §7. The one
+# deliberate exception is product/property/course photos, stored under a "public/"
+# prefix — MEDIA_URL itself stays None (nothing is servable from the bare root), and
+# only that one prefix gets a route at all: config/urls.py in dev, object storage/CDN
+# in production (DEPLOYMENT.md §5 — not wired to this Django process either way).
 MEDIA_ROOT = BASE_DIR / "media"
 MEDIA_URL = None
+PUBLIC_MEDIA_URL = "/media/public/"
 
 SIGNED_URL_TTL_SECONDS = env.int("SIGNED_URL_TTL_SECONDS", default=300)
 

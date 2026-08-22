@@ -4,31 +4,68 @@
 
 @layer base {
   :root {
-    --surface: 255 255 255;
-    --ink: 17 24 39;
-    --muted: 107 114 128;
-    --accent: 37 99 235;
-    --line: 229 231 235;
+    /* Botiva brand palette — Telegram-blue primary, Bale-green secondary, a teal
+       premium accent, and a navy scale for the header/footer/dark surfaces. RGB
+       triplets (not hex) so Tailwind's `rgb(var(--x) / <alpha-value>)` can still
+       apply opacity. */
+    --background: 246 248 251; /* #F6F8FB */
+    --surface: 255 255 255; /* #FFFFFF */
+    --surface-raised: 241 245 249; /* #F1F5F9 */
+
+    --ink: 15 23 42; /* #0F172A */
+    --muted: 100 116 139; /* #64748B */
+    --muted-light: 148 163 184; /* #94A3B8 */
+
+    --accent: 34 158 217; /* #229ED9 — primary */
+    --accent-strong: 22 138 194; /* #168AC2 */
+    --accent-soft: 230 246 253; /* #E6F6FD */
+
+    --secondary: 22 163 74; /* #16A34A */
+    --secondary-strong: 21 128 61; /* #15803D */
+    --secondary-soft: 220 252 231; /* #DCFCE7 */
+
+    --premium: 20 184 166; /* #14B8A6 */
+    --premium-soft: 204 251 241; /* #CCFBF1 */
+
+    --dark: 11 18 32; /* #0B1220 */
+    --dark-raised: 23 32 51; /* #172033 */
+
+    --line: 226 232 240; /* #E2E8F0 */
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --surface: 15 17 21;
-      --ink: 237 240 244;
-      --muted: 148 156 168;
-      --accent: 96 149 255;
-      --line: 39 43 51;
+      --background: 11 18 32;
+      --surface: 23 32 51;
+      --surface-raised: 30 41 59;
+
+      --ink: 231 236 243;
+      --muted: 148 163 184;
+      --muted-light: 100 116 139;
+
+      --accent: 77 184 232;
+      --accent-strong: 34 158 217;
+      --accent-soft: 21 45 61;
+
+      --secondary: 74 222 128;
+      --secondary-strong: 34 197 94;
+      --secondary-soft: 20 46 32;
+
+      --premium: 45 212 191;
+      --premium-soft: 19 51 48;
+
+      --line: 38 51 73;
     }
   }
 
   body {
-    background-color: rgb(var(--surface));
+    background-color: rgb(var(--background));
     color: rgb(var(--ink));
   }
 
   /* Persian needs a little more breathing room to stay legible (I18N.md §3). */
   [lang="fa"] {
-    font-family: var(--font-persian), Vazirmatn, Tahoma, sans-serif;
+    font-family: var(--font-persian), Estedad, Vazirmatn, Tahoma, sans-serif;
     line-height: 1.9;
   }
 }
@@ -36,21 +73,42 @@
 @layer components {
   .field {
     @apply w-full rounded-lg border border-line bg-transparent px-3 py-2 text-sm
-           outline-none focus:border-accent focus:ring-1 focus:ring-accent;
+           outline-none transition focus:border-accent focus:ring-1 focus:ring-accent;
   }
 
   .btn-primary {
     @apply inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2
-           text-sm font-medium text-white transition hover:opacity-90
-           disabled:cursor-not-allowed disabled:opacity-50;
+           text-sm font-medium text-white shadow-sm transition
+           hover:bg-accent-strong hover:shadow
+           disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none;
   }
 
   .btn-ghost {
     @apply inline-flex items-center justify-center rounded-lg border border-line
-           px-4 py-2 text-sm font-medium transition hover:border-accent;
+           px-4 py-2 text-sm font-medium transition hover:border-accent hover:text-accent;
   }
 
   .card {
-    @apply rounded-xl border border-line p-5;
+    @apply rounded-xl border border-line bg-surface p-5 shadow-sm transition
+           hover:shadow-md;
+  }
+
+  /* An interactive card that acts as a selectable option (platform/template/feature
+     pickers) gets a stronger, more deliberate "selected" treatment than a plain
+     `border-accent` — a tinted background and ring read as "chosen" at a glance,
+     not just "focused." */
+  .card-selectable {
+    @apply cursor-pointer;
+  }
+
+  .card-selectable[aria-pressed="true"] {
+    @apply border-accent bg-accent-soft ring-1 ring-accent;
+  }
+
+  /* The colored circle behind a feature/template/platform icon. `background`/`color`
+     are set inline per item (business-type or platform brand color) — this class only
+     supplies the shape. */
+  .icon-badge {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-full;
   }
 }

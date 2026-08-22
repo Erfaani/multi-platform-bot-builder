@@ -528,6 +528,55 @@ class TestAppointmentApi:
         response = other_client.get(f"/api/v1/bots/{provisioned_bot.public_id}/appointment-services/")
         assert response.status_code == 404
 
+    def test_reschedule_moves_the_appointment_and_keeps_its_id(
+        self, auth_client, provisioned_bot, service, staff, contact
+    ):
+        appointment = services.book_appointment(
+            bot=provisioned_bot, contact=contact, service=service, staff=staff,
+            starts_at=dj_timezone.now() + timedelta(days=1),
+        )
+        new_time = dj_timezone.now() + timedelta(days=2)
+
+        response = auth_client.post(
+            f"/api/v1/bots/{provisioned_bot.public_id}/appointments/{appointment.public_id}/reschedule/",
+            {"starts_at": new_time.isoformat()}, format="json",
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == str(appointment.public_id)
+        assert body["status"] == "CONFIRMED"
+
+        appointment.refresh_from_db()
+        assert appointment.starts_at == new_time
+
+    def test_a_cancelled_appointment_cannot_be_rescheduled(
+        self, auth_client, provisioned_bot, service, staff, contact
+    ):
+        appointment = services.book_appointment(
+            bot=provisioned_bot, contact=contact, service=service, staff=staff,
+            starts_at=dj_timezone.now() + timedelta(days=1),
+        )
+        services.cancel_appointment(appointment=appointment, actor=None)
+
+        response = auth_client.post(
+            f"/api/v1/bots/{provisioned_bot.public_id}/appointments/{appointment.public_id}/reschedule/",
+            {"starts_at": (dj_timezone.now() + timedelta(days=2)).isoformat()}, format="json",
+        )
+        assert response.status_code == 409
+
+    def test_rescheduling_into_the_past_is_rejected(
+        self, auth_client, provisioned_bot, service, staff, contact
+    ):
+        appointment = services.book_appointment(
+            bot=provisioned_bot, contact=contact, service=service, staff=staff,
+            starts_at=dj_timezone.now() + timedelta(days=1),
+        )
+        response = auth_client.post(
+            f"/api/v1/bots/{provisioned_bot.public_id}/appointments/{appointment.public_id}/reschedule/",
+            {"starts_at": (dj_timezone.now() - timedelta(days=1)).isoformat()}, format="json",
+        )
+        assert response.status_code == 409
+
 
 class TestReminders:
     @pytest.fixture

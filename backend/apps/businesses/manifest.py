@@ -6,7 +6,14 @@ and models arrive in Phase 7; the manifest shape does not change when they do.
 
 from __future__ import annotations
 
-from apps.features.manifests import FeatureCategory, FeatureManifest, MenuEntry, PreviewStep
+from apps.features.manifests import (
+    CollectItemField,
+    CollectSchema,
+    FeatureCategory,
+    FeatureManifest,
+    MenuEntry,
+    PreviewStep,
+)
 from apps.platforms.base import Choice, Reply
 
 BUSINESS_PROFILE = FeatureManifest(
@@ -16,7 +23,14 @@ BUSINESS_PROFILE = FeatureManifest(
     description_key="feature.business_profile.description",
     icon="building",
     always_on=True,  # a bot with no business identity is not a product
-    menu=(MenuEntry(label_key="menu.about", route="business:about", sort_order=10),),
+    menu=(
+        MenuEntry(label_key="menu.about", route="business:about", sort_order=10),
+        # Telegram-only in practice (`core:open_app`'s own handler explains why on any
+        # other platform) — kept on every bot rather than gated by feature/platform so
+        # the entry point stays a normal, always-declarative MenuEntry; see
+        # apps.platforms.base.Choice.web_app_url for how the actual button degrades.
+        MenuEntry(label_key="menu.open_app", route="core:open_app", sort_order=15),
+    ),
     price_keys=("feature.business_profile.setup",),
     permissions=("business.view", "business.manage"),
     preview=(
@@ -115,6 +129,22 @@ FAQ = FeatureManifest(
                 ],
             ),
         ),
+    ),
+    collects=CollectSchema(
+        kind="repeatable_form",
+        title_key="builder.collect.faq.title",
+        hint_key="builder.collect.faq.hint",
+        fields=(
+            CollectItemField(key="question", label_key="builder.collect.faq.question", max_length=255),
+            CollectItemField(
+                key="answer",
+                label_key="builder.collect.faq.answer",
+                kind="textarea",
+                max_length=2000,
+            ),
+        ),
+        add_label_key="builder.collect.faq.add",
+        max_items=50,
     ),
 )
 

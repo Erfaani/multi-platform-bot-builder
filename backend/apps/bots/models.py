@@ -218,6 +218,45 @@ class BotConfiguration(TimeStampedModel):
         self.refresh_from_db(fields=["version"])
 
 
+class InputRestrictionPolicy(TimeStampedModel):
+    """Owner-configurable rules for free-text input the bot collects from customers.
+
+    Enforced by `apps.crm.handlers` today (the only place that collects a phone or
+    email), but lives next to `BotConfiguration` rather than in `apps.crm` — it is a
+    bot-wide behaviour setting, the same category of thing as locale or timezone, and a
+    future feature collecting a phone or email should read the same policy rather than
+    inventing its own.
+    """
+
+    bot = models.OneToOneField(Bot, on_delete=models.CASCADE, related_name="input_restrictions")
+
+    #: Calling-code prefixes (e.g. "+98", "+1") a phone number must start with to be
+    #: accepted. Empty means every calling code is allowed. This is prefix matching
+    #: against normalised digits, not full number parsing/geocoding — a calling code
+    #: like "+1" spans several countries, and a business restricting input cares about
+    #: the code it dials, not which country that code nominally belongs to.
+    allowed_calling_codes = models.JSONField(default=list, blank=True)
+    #: Specific numbers blocked regardless of the calling-code allowlist, stored
+    #: digits-only (no "+", spaces, or punctuation) so matching is exact.
+    blocked_phone_numbers = models.JSONField(default=list, blank=True)
+
+    #: Off by default so bots that already had `consultation_request` keep behaving
+    #: exactly as before this feature shipped — an owner opts in explicitly.
+    collect_email_on_consultation = models.BooleanField(default=False)
+    #: Empty means every domain is allowed.
+    allowed_email_domains = models.JSONField(default=list, blank=True)
+    blocked_email_domains = models.JSONField(default=list, blank=True)
+    #: Reject anything that doesn't look like `local@domain.tld`, beyond the
+    #: domain-list checks above.
+    strict_email_format = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "input_restriction_policy"
+
+    def __str__(self) -> str:
+        return f"input restrictions for bot {self.bot_id}"
+
+
 class BotFeature(TimeStampedModel):
     bot = models.ForeignKey(Bot, on_delete=models.CASCADE, related_name="bot_features")
     feature = models.ForeignKey(

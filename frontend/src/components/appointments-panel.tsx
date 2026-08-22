@@ -10,6 +10,140 @@ import {
   type StaffMemberView,
 } from "@/lib/bots";
 
+function ServiceEditForm({
+  service,
+  botId,
+  onDone,
+}: {
+  service: AppointmentServiceView;
+  botId: string;
+  onDone: () => void;
+}) {
+  const t = useTranslations();
+  const { locale } = useIntl();
+  const [name, setName] = useState(service.name);
+  const [duration, setDuration] = useState(service.duration_minutes);
+  const [busy, setBusy] = useState(false);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (!name.trim() || duration <= 0) return;
+    setBusy(true);
+    try {
+      await botsApi.updateAppointmentService(botId, service.id, { name, duration_minutes: duration }, locale);
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="flex flex-wrap gap-2">
+      <input className="field flex-1" value={name} onChange={(e) => setName(e.target.value)} required />
+      <input
+        type="number"
+        min={1}
+        className="field w-28"
+        value={duration}
+        onChange={(e) => setDuration(Number(e.target.value))}
+      />
+      <button type="submit" disabled={busy} className="btn-primary shrink-0">
+        {t("common.save")}
+      </button>
+      <button type="button" onClick={onDone} className="btn-ghost shrink-0">
+        {t("common.cancel")}
+      </button>
+    </form>
+  );
+}
+
+function StaffEditForm({
+  member,
+  botId,
+  onDone,
+}: {
+  member: StaffMemberView;
+  botId: string;
+  onDone: () => void;
+}) {
+  const t = useTranslations();
+  const { locale } = useIntl();
+  const [name, setName] = useState(member.name);
+  const [busy, setBusy] = useState(false);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    try {
+      await botsApi.updateStaffMember(botId, member.id, { name }, locale);
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="flex gap-2">
+      <input className="field flex-1" value={name} onChange={(e) => setName(e.target.value)} required />
+      <button type="submit" disabled={busy} className="btn-primary shrink-0">
+        {t("common.save")}
+      </button>
+      <button type="button" onClick={onDone} className="btn-ghost shrink-0">
+        {t("common.cancel")}
+      </button>
+    </form>
+  );
+}
+
+function RescheduleForm({
+  appointment,
+  botId,
+  onDone,
+}: {
+  appointment: AppointmentView;
+  botId: string;
+  onDone: () => void;
+}) {
+  const t = useTranslations();
+  const { locale } = useIntl();
+  const [value, setValue] = useState(appointment.starts_at.slice(0, 16));
+  const [busy, setBusy] = useState(false);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (!value) return;
+    setBusy(true);
+    try {
+      await botsApi.rescheduleAppointment(botId, appointment.id, new Date(value).toISOString(), locale);
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="flex flex-wrap items-center gap-2">
+      <label className="flex items-center gap-2 text-xs text-muted">
+        {t("bot.appointments.rescheduleTo")}
+        <input
+          type="datetime-local"
+          className="field w-auto"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          required
+        />
+      </label>
+      <button type="submit" disabled={busy} className="btn-primary shrink-0 text-xs">
+        {t("common.save")}
+      </button>
+      <button type="button" onClick={onDone} className="btn-ghost shrink-0 text-xs">
+        {t("common.cancel")}
+      </button>
+    </form>
+  );
+}
+
 export function AppointmentsPanel({ botId }: { botId: string }) {
   const t = useTranslations();
   const { locale } = useIntl();
@@ -23,6 +157,9 @@ export function AppointmentsPanel({ botId }: { botId: string }) {
   const [duration, setDuration] = useState(30);
   const [staffName, setStaffName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
+  const [editingStaffId, setEditingStaffId] = useState<number | null>(null);
+  const [reschedulingId, setReschedulingId] = useState<string | null>(null);
 
   function load() {
     botsApi.appointmentServices(botId, locale).then(setServices).catch(() => setError(t("error.network")));
@@ -102,13 +239,33 @@ export function AppointmentsPanel({ botId }: { botId: string }) {
         <h3 className="text-sm font-medium text-muted">{t("bot.appointments.services")}</h3>
         <ul className="space-y-1">
           {services.map((service) => (
-            <li key={service.id} className="flex items-center justify-between gap-3 text-sm">
-              <span>
-                {service.name} · {service.duration_minutes} {t("bot.appointments.minutes")}
-              </span>
-              <button type="button" onClick={() => removeService(service.id)} className="text-xs text-red-500">
-                {t("common.remove")}
-              </button>
+            <li key={service.id} className="space-y-1 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span>
+                  {service.name} · {service.duration_minutes} {t("bot.appointments.minutes")}
+                </span>
+                <span className="flex shrink-0 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setEditingServiceId(editingServiceId === service.id ? null : service.id)}
+                  >
+                    {t("common.edit")}
+                  </button>
+                  <button type="button" onClick={() => removeService(service.id)} className="text-red-500">
+                    {t("common.remove")}
+                  </button>
+                </span>
+              </div>
+              {editingServiceId === service.id ? (
+                <ServiceEditForm
+                  service={service}
+                  botId={botId}
+                  onDone={() => {
+                    setEditingServiceId(null);
+                    load();
+                  }}
+                />
+              ) : null}
             </li>
           ))}
           {services.length === 0 ? <p className="text-sm text-muted">{t("bot.appointments.noServices")}</p> : null}
@@ -138,11 +295,31 @@ export function AppointmentsPanel({ botId }: { botId: string }) {
         <h3 className="text-sm font-medium text-muted">{t("bot.appointments.staff")}</h3>
         <ul className="space-y-1">
           {staff.map((member) => (
-            <li key={member.id} className="flex items-center justify-between gap-3 text-sm">
-              <span>{member.name}</span>
-              <button type="button" onClick={() => removeStaff(member.id)} className="text-xs text-red-500">
-                {t("common.remove")}
-              </button>
+            <li key={member.id} className="space-y-1 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span>{member.name}</span>
+                <span className="flex shrink-0 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setEditingStaffId(editingStaffId === member.id ? null : member.id)}
+                  >
+                    {t("common.edit")}
+                  </button>
+                  <button type="button" onClick={() => removeStaff(member.id)} className="text-red-500">
+                    {t("common.remove")}
+                  </button>
+                </span>
+              </div>
+              {editingStaffId === member.id ? (
+                <StaffEditForm
+                  member={member}
+                  botId={botId}
+                  onDone={() => {
+                    setEditingStaffId(null);
+                    load();
+                  }}
+                />
+              ) : null}
             </li>
           ))}
           {staff.length === 0 ? <p className="text-sm text-muted">{t("bot.appointments.noStaff")}</p> : null}
@@ -168,15 +345,35 @@ export function AppointmentsPanel({ botId }: { botId: string }) {
         ) : (
           <ul className="space-y-1">
             {upcoming.map((appointment) => (
-              <li key={appointment.id} className="flex items-center justify-between gap-3 text-sm">
-                <span>
-                  {new Date(appointment.starts_at).toLocaleString(locale === "fa" ? "fa-IR" : "en-US")} ·{" "}
-                  {appointment.service} · {appointment.staff}
-                  {appointment.contact_name ? ` · ${appointment.contact_name}` : ""}
-                </span>
-                <button type="button" onClick={() => cancel(appointment.id)} className="text-xs text-red-500">
-                  {t("bot.appointments.cancel")}
-                </button>
+              <li key={appointment.id} className="space-y-1 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span>
+                    {new Date(appointment.starts_at).toLocaleString(locale === "fa" ? "fa-IR" : "en-US")} ·{" "}
+                    {appointment.service} · {appointment.staff}
+                    {appointment.contact_name ? ` · ${appointment.contact_name}` : ""}
+                  </span>
+                  <span className="flex shrink-0 gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setReschedulingId(reschedulingId === appointment.id ? null : appointment.id)}
+                    >
+                      {t("bot.appointments.reschedule")}
+                    </button>
+                    <button type="button" onClick={() => cancel(appointment.id)} className="text-red-500">
+                      {t("bot.appointments.cancel")}
+                    </button>
+                  </span>
+                </div>
+                {reschedulingId === appointment.id ? (
+                  <RescheduleForm
+                    appointment={appointment}
+                    botId={botId}
+                    onDone={() => {
+                      setReschedulingId(null);
+                      load();
+                    }}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>

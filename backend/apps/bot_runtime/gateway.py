@@ -82,13 +82,16 @@ def _reply_markup(message: RenderedMessage, callback_values: list[list[str]] | N
         return None
 
     if message.layout == ButtonLayout.INLINE and callback_values:
+        url_rows = message.web_app_urls or [[None] * len(row) for row in message.buttons]
         return {
             "inline_keyboard": [
                 [
-                    {"text": label, "callback_data": data}
-                    for label, data in zip(row, values, strict=False)
+                    {"text": label, "web_app": {"url": url}}
+                    if url
+                    else {"text": label, "callback_data": data}
+                    for label, data, url in zip(row, values, urls, strict=False)
                 ]
-                for row, values in zip(message.buttons, callback_values, strict=False)
+                for row, values, urls in zip(message.buttons, callback_values, url_rows, strict=False)
             ]
         }
 

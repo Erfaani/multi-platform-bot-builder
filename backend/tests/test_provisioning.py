@@ -299,3 +299,148 @@ class TestErrorCodeNormalization:
         assert get_provisioner("bale") is not None
         assert get_provisioner("whatsapp") is None
         assert supported_platforms() == {"telegram", "bale"}
+
+
+class TestSeedCollectedContent:
+    """Content typed into the builder's per-feature configuration step (Phase 10.5)
+    becomes real data the moment the bot activates — `business_snapshot.feature_config`
+    -> real `FaqEntry` rows, via `apps.provisioning.saga.step_seed_collected_content`."""
+
+    def test_faq_drafted_before_payment_is_live_the_moment_the_bot_activates(
+        self, paid_order, pool_entry, fake_transport
+    ):
+        from apps.businesses.models import FaqEntry
+
+        paid_order.business_snapshot = {
+            **paid_order.business_snapshot,
+            "feature_config": {
+                "faq": [
+                    {"question": "Do you take walk-ins?", "answer": "Yes, until 6pm."},
+                    {"question": "Is parking available?", "answer": "Yes, free lot next door."},
+                ]
+            },
+        }
+        paid_order.save(update_fields=["business_snapshot"])
+
+        job = run_job(create_job(order=paid_order, strategy="pool"))
+
+        assert job.status == JobStatus.SUCCEEDED
+        entries = list(FaqEntry.objects.filter(bot=job.bot).order_by("sort_order"))
+        assert [e.question for e in entries] == [
+            "Do you take walk-ins?",
+            "Is parking available?",
+        ]
+        assert entries[0].answer == "Yes, until 6pm."
+        assert entries[0].source == FaqEntry.Source.MANUAL
+
+    def test_re_validates_rather_than_trusting_the_snapshot_as_already_clean(
+        self, paid_order, pool_entry, fake_transport
+    ):
+        """The saga step must hold even if whatever wrote `business_snapshot` skipped
+        `BuildQuoteSerializer`'s cleaning — a raw, over-length, unvalidated blob here
+        must not reach the database unclean."""
+        from apps.businesses.models import FaqEntry
+
+        paid_order.business_snapshot = {
+            **paid_order.business_snapshot,
+            "feature_config": {
+                "faq": [
+                    {"question": "Q with no answer at all"},  # missing required field
+                    {"question": "Q2", "answer": "x" * 5000},  # far past max_length
+                ]
+            },
+        }
+        paid_order.save(update_fields=["business_snapshot"])
+
+        job = run_job(create_job(order=paid_order, strategy="pool"))
+
+        assert job.status == JobStatus.SUCCEEDED
+        entries = list(FaqEntry.objects.filter(bot=job.bot))
+        assert len(entries) == 1  # the incomplete item was dropped, not saved half-written
+        assert len(entries[0].answer) == 2000  # truncated to the schema's max_length
+
+    def test_a_resumed_job_does_not_duplicate_faq_entries(
+        self, paid_order, pool_entry, fake_transport
+    ):
+        from apps.businesses.models import FaqEntry
+        from apps.provisioning.saga import StepContext, step_seed_collected_content
+
+        paid_order.business_snapshot = {
+            **paid_order.business_snapshot,
+            "feature_config": {"faq": [{"question": "Q", "answer": "A"}]},
+        }
+        paid_order.save(update_fields=["business_snapshot"])
+
+        job = run_job(create_job(order=paid_order, strategy="pool"))
+        assert FaqEntry.objects.filter(bot=job.bot).count() == 1
+
+        # A second run of the same step, as a resume would do, must be a no-op.
+        step_seed_collected_content(StepContext(job=job, order=paid_order, bot=job.bot))
+        assert FaqEntry.objects.filter(bot=job.bot).count() == 1
+
+    def test_no_feature_config_is_a_harmless_no_op(self, paid_order, pool_entry, fake_transport):
+        """`paid_order`'s own draft has no `feature_config` key at all — the common case
+        (a customer who added no FAQ content) must provision cleanly, not error."""
+        job = run_job(create_job(order=paid_order, strategy="pool"))
+        assert job.status == JobStatus.SUCCEEDED
+
+    def test_property_listings_drafted_before_payment_are_live_on_activation(
+        self, paid_order, pool_entry, fake_transport
+    ):
+        from apps.commerce.models import PropertyListing
+
+        paid_order.features = [*paid_order.features, "property_listings"]
+        paid_order.business_snapshot = {
+            **paid_order.business_snapshot,
+            "feature_config": {
+                "property_listings": [
+                    {
+                        "title": "2-bed downtown",
+                        "listing_type": "RENT",
+                        "property_type": "APARTMENT",
+                        "price": "250000",
+                        "address": "12 Example Street",
+                    },
+                    {  # unparseable price -> dropped, not priced as free
+                        "title": "Broken listing",
+                        "listing_type": "SALE",
+                        "property_type": "HOUSE",
+                        "price": "not-a-number",
+                    },
+                ]
+            },
+        }
+        paid_order.save(update_fields=["features", "business_snapshot"])
+
+        job = run_job(create_job(order=paid_order, strategy="pool"))
+
+        assert job.status == JobStatus.SUCCEEDED
+        listings = list(PropertyListing.objects.filter(bot=job.bot))
+        assert len(listings) == 1
+        assert listings[0].title == "2-bed downtown"
+        assert listings[0].listing_type == "RENT"
+        assert listings[0].price_minor == 250_000_00
+
+    def test_course_offerings_drafted_before_payment_are_live_on_activation(
+        self, paid_order, pool_entry, fake_transport
+    ):
+        from apps.commerce.models import CourseOffering
+
+        paid_order.features = [*paid_order.features, "course_catalog"]
+        paid_order.business_snapshot = {
+            **paid_order.business_snapshot,
+            "feature_config": {
+                "course_catalog": [
+                    {"title": "Beginner Photoshop", "price": "199.99", "instructor_name": "Dana"},
+                ]
+            },
+        }
+        paid_order.save(update_fields=["features", "business_snapshot"])
+
+        job = run_job(create_job(order=paid_order, strategy="pool"))
+
+        assert job.status == JobStatus.SUCCEEDED
+        courses = list(CourseOffering.objects.filter(bot=job.bot))
+        assert len(courses) == 1
+        assert courses[0].title == "Beginner Photoshop"
+        assert courses[0].instructor_name == "Dana"

@@ -133,6 +133,112 @@ def product_detail(event, session, ctx, value: str = "", locale: str = "en") -> 
     )
 
 
+# --------------------------------------------------------------------------- property listings
+
+
+@route("property_listings:list")
+@command("properties")
+def browse_properties(event, session, ctx, value: str = "", locale: str = "en") -> HandlerResult:
+    listings = services.list_properties(ctx.bot_id)
+    if not listings:
+        return _menu_reply(ctx, "bot.commerce.no_properties")
+
+    return HandlerResult(
+        reply=Reply(
+            text_key="bot.commerce.select_property",
+            choices=[
+                Choice(
+                    label_key=f"literal:{p.title} — {_money_label(p.price_minor, p.currency)}",
+                    value=f"property_listings:detail.{p.pk}",
+                )
+                for p in listings
+            ],
+        ),
+        next_state="IDLE",
+    )
+
+
+@route("property_listings:detail")
+def property_detail(event, session, ctx, value: str = "", locale: str = "en") -> HandlerResult:
+    from apps.commerce.models import PropertyListing
+
+    listing = PropertyListing.objects.filter(bot_id=ctx.bot_id, pk=value, is_active=True).first()
+    if listing is None:
+        return _menu_reply(ctx, "bot.commerce.expired")
+
+    facts = []
+    if listing.bedrooms is not None:
+        facts.append(f"{listing.bedrooms} bed")
+    if listing.bathrooms is not None:
+        facts.append(f"{listing.bathrooms} bath")
+    if listing.area_sqm is not None:
+        facts.append(f"{listing.area_sqm} m²")
+
+    return HandlerResult(
+        reply=Reply(
+            text_key="bot.commerce.property_detail",
+            params={
+                "title": listing.title,
+                "listing_type": listing.get_listing_type_display(),
+                "property_type": listing.get_property_type_display(),
+                "price": _money_label(listing.price_minor, listing.currency),
+                "facts": ", ".join(facts),
+                "address": listing.address,
+                "description": listing.description,
+            },
+        ),
+        next_state="IDLE",
+    )
+
+
+# --------------------------------------------------------------------------- course catalogue
+
+
+@route("course_catalog:list")
+@command("courses")
+def browse_courses(event, session, ctx, value: str = "", locale: str = "en") -> HandlerResult:
+    courses = services.list_courses(ctx.bot_id)
+    if not courses:
+        return _menu_reply(ctx, "bot.commerce.no_courses")
+
+    return HandlerResult(
+        reply=Reply(
+            text_key="bot.commerce.select_course",
+            choices=[
+                Choice(
+                    label_key=f"literal:{c.title} — {_money_label(c.price_minor, c.currency)}",
+                    value=f"course_catalog:detail.{c.pk}",
+                )
+                for c in courses
+            ],
+        ),
+        next_state="IDLE",
+    )
+
+
+@route("course_catalog:detail")
+def course_detail(event, session, ctx, value: str = "", locale: str = "en") -> HandlerResult:
+    from apps.commerce.models import CourseOffering
+
+    course = CourseOffering.objects.filter(bot_id=ctx.bot_id, pk=value, is_active=True).first()
+    if course is None:
+        return _menu_reply(ctx, "bot.commerce.expired")
+
+    return HandlerResult(
+        reply=Reply(
+            text_key="bot.commerce.course_detail",
+            params={
+                "title": course.title,
+                "instructor": course.instructor_name or "—",
+                "duration": course.duration_label or "—",
+                "price": _money_label(course.price_minor, course.currency),
+                "description": course.description,
+            },
+        ),
+        next_state="IDLE",
+    )
+
+
 # --------------------------------------------------------------------------- cart
 
 

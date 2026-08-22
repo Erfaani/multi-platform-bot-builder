@@ -95,19 +95,31 @@ mistake cannot cross tenants.
 
 ## 7. File uploads
 
-Applies to receipts, logos, AI documents, support attachments.
+Applies to receipts, logos, AI documents, support attachments — **and**, since Phase
+10.5, product/property/course photos, which are the one deliberate exception to the
+"private" rule below.
 
-- Private bucket only. `MEDIA_URL` serves nothing user-uploaded.
-- Access via short-TTL (5 min) signed URLs; every issuance is audit-logged with the actor.
+- Private bucket by default. `MEDIA_URL` serves nothing user-uploaded.
+  - **Exception**: product/property/course photos (`apps.commerce.models.ProductImage`
+    / `PropertyImage` / `CourseOffering.thumbnail`) are stored under a `public/` prefix
+    and are meant to be shown to end customers browsing a bot — a signed URL would be
+    the wrong tool for content that is supposed to be publicly linkable. Everything else
+    in this list still applies to them unchanged (allowlist, size cap, re-encoding,
+    filename regeneration, SVG rejection); only the delivery mechanism differs. Nothing
+    outside that one prefix is ever served — see `config/urls.py` and
+    `apps.commerce.models._public_upload_to`.
+- Everything *not* under `public/` (receipts, logos, AI documents, support attachments):
+  access via short-TTL (5 min) signed URLs; every issuance is audit-logged with the actor.
 - Extension **and** content-sniffed MIME must both be on the allowlist
   (`image/jpeg`, `image/png`, `image/webp`, `application/pdf`).
-- Size caps (receipts 5 MB, logos 2 MB, documents 20 MB).
+- Size caps (receipts 5 MB, logos 2 MB, documents 20 MB, public photos 5 MB).
 - Images are re-encoded server-side, stripping EXIF (GPS in a receipt photo is a privacy
   problem) and any embedded payload.
 - Filenames are regenerated; the original is stored as metadata only. No path traversal
   surface.
-- `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` on delivery.
-- AV scan hook before an admin can open a file.
+- `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` on delivery of
+  private uploads.
+- AV scan hook before an admin can open a private file.
 - SVG is **rejected** everywhere — it is an XSS vector.
 
 ## 8. Payments integrity

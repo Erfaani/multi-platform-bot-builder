@@ -26,6 +26,8 @@ api_v1 = [
     path("", include("apps.bots.api.urls")),
     # Phase 6 — customer dashboard
     path("", include("apps.support.api.urls")),
+    # Phase 10.5 — Telegram Mini App (end-user storefront/booking, initData-authenticated)
+    path("", include("apps.miniapp.api.urls")),
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "docs/",
@@ -53,4 +55,13 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:  # pragma: no cover
+    from django.conf.urls.static import static
+
     urlpatterns += [path("i18n/", include("django.conf.urls.i18n"))]
+    # Dev-only stand-in for production's object storage/CDN (DEPLOYMENT.md §5). Scoped
+    # to exactly the "public/" prefix product/property/course photos use — nothing else
+    # under MEDIA_ROOT (receipts, AI documents) gets a route here or anywhere else;
+    # see SECURITY.md §7.
+    urlpatterns += static(
+        settings.PUBLIC_MEDIA_URL, document_root=str(settings.MEDIA_ROOT / "public")
+    )

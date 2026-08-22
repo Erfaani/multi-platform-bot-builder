@@ -67,6 +67,23 @@ export interface BusinessProfileView {
   address: string;
   city: string;
   working_hours_text: string;
+  logo_url: string;
+}
+
+export interface WorkingHoursRow {
+  weekday: number;
+  opens_at: string | null;
+  closes_at: string | null;
+  is_closed: boolean;
+}
+
+export interface InputRestrictionsView {
+  allowed_calling_codes: string[];
+  blocked_phone_numbers: string[];
+  collect_email_on_consultation: boolean;
+  allowed_email_domains: string[];
+  blocked_email_domains: string[];
+  strict_email_format: boolean;
 }
 
 export interface FaqEntryView {
@@ -144,12 +161,18 @@ export const botsApi = {
 
   updateConfiguration: (
     id: string,
-    payload: { name?: string; welcome_message?: string; default_locale?: string },
+    payload: { name?: string; welcome_message?: string; default_locale?: string; timezone?: string },
     locale: Locale,
   ) =>
     apiFetch<BotView>(`/bots/${id}/configuration/`, {
       method: "PATCH",
       body: payload,
+      locale,
+    }),
+
+  rotateWebhook: (id: string, instanceId: string, locale: Locale) =>
+    apiFetch<BotView>(`/bots/${id}/instances/${instanceId}/rotate-webhook/`, {
+      method: "POST",
       locale,
     }),
 
@@ -165,6 +188,36 @@ export const botsApi = {
 
   updateBusinessProfile: (id: string, payload: Partial<BusinessProfileView>, locale: Locale) =>
     apiFetch<BusinessProfileView>(`/bots/${id}/business-profile/`, {
+      method: "PATCH",
+      body: payload,
+      locale,
+    }),
+
+  uploadBusinessLogo: (id: string, file: File, locale: Locale) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<BusinessProfileView>(`/bots/${id}/business-profile/logo/`, {
+      method: "POST",
+      body: form,
+      locale,
+    });
+  },
+
+  workingHours: (id: string, locale: Locale) =>
+    apiFetch<{ days: WorkingHoursRow[] }>(`/bots/${id}/working-hours/`, { locale }),
+
+  updateWorkingHours: (id: string, days: WorkingHoursRow[], locale: Locale) =>
+    apiFetch<{ days: WorkingHoursRow[] }>(`/bots/${id}/working-hours/`, {
+      method: "PUT",
+      body: { days },
+      locale,
+    }),
+
+  inputRestrictions: (id: string, locale: Locale) =>
+    apiFetch<InputRestrictionsView>(`/bots/${id}/input-restrictions/`, { locale }),
+
+  updateInputRestrictions: (id: string, payload: Partial<InputRestrictionsView>, locale: Locale) =>
+    apiFetch<InputRestrictionsView>(`/bots/${id}/input-restrictions/`, {
       method: "PATCH",
       body: payload,
       locale,
@@ -242,6 +295,18 @@ export const botsApi = {
   createStaffMember: (id: string, payload: { name: string }, locale: Locale) =>
     apiFetch<StaffMemberView>(`/bots/${id}/staff/`, { method: "POST", body: payload, locale }),
 
+  updateStaffMember: (
+    id: string,
+    staffId: number,
+    payload: Partial<Pick<StaffMemberView, "name" | "is_active">>,
+    locale: Locale,
+  ) =>
+    apiFetch<StaffMemberView>(`/bots/${id}/staff/${staffId}/`, {
+      method: "PATCH",
+      body: payload,
+      locale,
+    }),
+
   deleteStaffMember: (id: string, staffId: number, locale: Locale) =>
     apiFetch<void>(`/bots/${id}/staff/${staffId}/`, { method: "DELETE", locale }),
 
@@ -252,6 +317,13 @@ export const botsApi = {
     apiFetch<AppointmentView>(`/bots/${id}/appointments/${appointmentId}/cancel/`, {
       method: "POST",
       body: { reason },
+      locale,
+    }),
+
+  rescheduleAppointment: (id: string, appointmentId: string, startsAt: string, locale: Locale) =>
+    apiFetch<AppointmentView>(`/bots/${id}/appointments/${appointmentId}/reschedule/`, {
+      method: "POST",
+      body: { starts_at: startsAt },
       locale,
     }),
 

@@ -3,6 +3,8 @@ import { IntlProvider } from "@/i18n/provider";
 import { directionOf, isLocale, LOCALES, type Locale } from "@/i18n/config";
 import { AuthProvider } from "@/lib/auth";
 import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
+import { estedad, manrope } from "@/fonts";
 
 import en from "@/i18n/messages/en.json";
 import fa from "@/i18n/messages/fa.json";
@@ -26,16 +28,21 @@ export default async function LocaleLayout({
   const dir = directionOf(locale);
 
   return (
-    <html lang={locale} dir={dir} suppressHydrationWarning>
+    <html
+      lang={locale}
+      dir={dir}
+      suppressHydrationWarning
+      className={`${manrope.variable} ${estedad.variable}`}
+    >
       <body className={locale === "fa" ? "font-persian" : "font-sans"}>
         <IntlProvider locale={locale} messages={MESSAGES[locale]}>
           <AuthProvider>
-            <div className="mx-auto flex min-h-screen max-w-5xl flex-col px-4">
+            <div className="flex min-h-screen flex-col">
               <SiteHeader />
-              <main className="flex-1 py-10">{children}</main>
-              <footer className="border-t border-line py-6 text-sm text-muted">
-                Bot Builder Platform — Phase 1
-              </footer>
+              <main className="flex-1">
+                <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">{children}</div>
+              </main>
+              <SiteFooter />
             </div>
           </AuthProvider>
         </IntlProvider>

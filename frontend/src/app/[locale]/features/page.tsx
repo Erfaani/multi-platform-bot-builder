@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useIntl, useTranslations } from "@/i18n/provider";
 import { builderApi, type FeatureItem } from "@/lib/builder";
+import { AppIcon } from "@/lib/icons";
 
 export default function FeaturesPage() {
   const t = useTranslations();
@@ -43,17 +44,26 @@ export default function FeaturesPage() {
           </h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {items.map((feature) => (
-              <article key={feature.slug} className="card space-y-1">
-                <h3 className="text-sm font-medium">{feature.name}</h3>
-                <p className="text-xs text-muted">{feature.description}</p>
-                <p className="text-xs text-muted">
-                  {Object.entries(feature.platforms)
-                    .map(
-                      ([platform, info]) =>
-                        `${platform}: ${info.available ? "✓" : "✕"}`,
-                    )
-                    .join(" · ")}
-                </p>
+              <article key={feature.slug} className="card flex items-start gap-3">
+                <span className="icon-badge bg-accent-soft text-accent">
+                  <AppIcon name={feature.icon} size={18} />
+                </span>
+                <div className="space-y-1">
+                  <h3 className="text-sm font-medium">{feature.name}</h3>
+                  <p className="text-xs text-muted">{feature.description}</p>
+                  <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                    {Object.entries(feature.platforms).map(([platform, info]) => (
+                      <span key={platform} className="inline-flex items-center gap-1">
+                        <AppIcon
+                          name={info.available ? "check" : "x"}
+                          size={12}
+                          className={info.available ? "text-accent" : "text-red-500"}
+                        />
+                        {platform}
+                      </span>
+                    ))}
+                  </p>
+                </div>
               </article>
             ))}
           </div>

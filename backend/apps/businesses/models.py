@@ -20,7 +20,10 @@ class BusinessProfile(TenantOwnedModel):
     legal_name = models.CharField(max_length=255, blank=True)
     display_name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    logo_file_key = models.CharField(max_length=255, blank=True)
+    #: Public-servable, like `apps.commerce.models.ProductImage` — a logo is shown on
+    #: the dashboard and template cards, not kept private like a receipt. Plain string
+    #: `upload_to` (not a closure) so Django migrations can serialize it.
+    logo = models.FileField(upload_to="public/logos/%Y/%m/", blank=True)
 
     phone = models.CharField(max_length=32, blank=True)
     secondary_phone = models.CharField(max_length=32, blank=True)

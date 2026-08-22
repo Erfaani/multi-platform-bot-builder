@@ -5,8 +5,12 @@ from apps.commerce.models import (
     BusinessOrderItem,
     Cart,
     CartItem,
+    CourseOffering,
     Product,
     ProductCategory,
+    ProductImage,
+    PropertyImage,
+    PropertyListing,
     TableReservation,
 )
 
@@ -19,12 +23,40 @@ class ProductCategoryAdmin(admin.ModelAdmin):
     autocomplete_fields = ("tenant", "bot")
 
 
+class ProductImageInline(admin.TabularInline):
+    model = ProductImage
+    extra = 0
+
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = ("name", "bot", "category", "price", "stock", "is_active")
     list_filter = ("is_active",)
     search_fields = ("name", "bot__name")
     autocomplete_fields = ("tenant", "bot", "category")
+    inlines = (ProductImageInline,)
+
+
+class PropertyImageInline(admin.TabularInline):
+    model = PropertyImage
+    extra = 0
+
+
+@admin.register(PropertyListing)
+class PropertyListingAdmin(admin.ModelAdmin):
+    list_display = ("title", "bot", "listing_type", "property_type", "price", "is_active")
+    list_filter = ("is_active", "listing_type", "property_type")
+    search_fields = ("title", "bot__name", "address")
+    autocomplete_fields = ("tenant", "bot")
+    inlines = (PropertyImageInline,)
+
+
+@admin.register(CourseOffering)
+class CourseOfferingAdmin(admin.ModelAdmin):
+    list_display = ("title", "bot", "instructor_name", "price", "capacity", "enrolled_count", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("title", "bot__name", "instructor_name")
+    autocomplete_fields = ("tenant", "bot")
 
 
 class CartItemInline(admin.TabularInline):

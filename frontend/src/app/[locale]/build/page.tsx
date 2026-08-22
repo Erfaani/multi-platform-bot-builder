@@ -13,25 +13,40 @@ import {
   builderApi,
   quoteSession,
   type BusinessTemplate,
+  type CollectItemField,
+  type CollectSchema,
   type FeatureItem,
   type PlatformOption,
   type PlatformPreview,
   type QuoteView,
 } from "@/lib/builder";
 import { useAuth } from "@/lib/auth";
+import { AppIcon } from "@/lib/icons";
+import { localeCurrency } from "@/lib/format";
+import { platformBrand } from "@/lib/platform-brand";
+import { PlatformIcon } from "@/components/platform-icon";
 
-/** Spec §8. Steps 8–9 (order, payment) arrive in Phase 3. */
-const STEPS = [
-  "platform",
-  "business_type",
-  "business_info",
-  "features",
-  "customize",
-  "preview",
-  "price",
-] as const;
+/** Spec §8. Steps 8–9 (order, payment) arrive in Phase 3.
+ *
+ * Not every step is fixed: a "collect:<slug>" step is inserted for each selected
+ * feature that declares a `collects` schema (dynamic configuration, Phase 10.5) — FAQ's
+ * "enter your questions and answers" instead of a generic form, only shown when FAQ is
+ * actually selected. `buildSteps()` computes the real, current list; this constant is
+ * only the fixed part, before and after the dynamic middle.
+ */
+const BASE_STEPS = ["platform", "business_type", "features"] as const;
+const TAIL_STEPS = ["business_info", "customize", "preview", "price"] as const;
 
-type Step = (typeof STEPS)[number];
+type FixedStep = (typeof BASE_STEPS)[number] | (typeof TAIL_STEPS)[number];
+type Step = FixedStep | `collect:${string}`;
+
+function buildSteps(collectFeatures: FeatureItem[]): Step[] {
+  return [
+    ...BASE_STEPS,
+    ...collectFeatures.map((feature): Step => `collect:${feature.slug}`),
+    ...TAIL_STEPS,
+  ];
+}
 
 interface BusinessDraft {
   name: string;
@@ -54,10 +69,9 @@ const EMPTY_DRAFT: BusinessDraft = {
 export default function BuildPage() {
   const t = useTranslations();
   const { locale } = useIntl();
-  const { user } = useAuth();
+  const { user, tenants, activeTenantId } = useAuth();
 
-  const [stepIndex, setStepIndex] = useState(0);
-  const step: Step = STEPS[stepIndex];
+  const [step, setStep] = useState<Step>("platform");
 
   const [platforms, setPlatforms] = useState<PlatformOption[]>([]);
   const [templates, setTemplates] = useState<BusinessTemplate[]>([]);
@@ -67,7 +81,52 @@ export default function BuildPage() {
   const [templateSlug, setTemplateSlug] = useState<string>("");
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
   const [draft, setDraft] = useState<BusinessDraft>(EMPTY_DRAFT);
-  const [currency, setCurrency] = useState<string>("USD");
+
+  // One entry per selected feature that declares a `collects` schema (FAQ's Q&A pairs,
+  // and — Stage 3 — property/course content). Keyed by feature slug so switching a
+  // feature off and back on does not lose what was already typed.
+  const [featureConfig, setFeatureConfig] = useState<Record<string, Record<string, string>[]>>({});
+
+  const collectFeatures = useMemo(
+    () =>
+      selectedFeatures
+        .map((slug) => features.find((item) => item.slug === slug))
+        .filter((item): item is FeatureItem => Boolean(item?.collects)),
+    [selectedFeatures, features],
+  );
+
+  const steps = useMemo(() => buildSteps(collectFeatures), [collectFeatures]);
+  const stepIndex = Math.max(steps.indexOf(step), 0);
+
+  // A feature can be deselected (or a platform choice can drop it, see `blockedFeatures`
+  // below) while its collect step is the one on screen — land somewhere still valid
+  // rather than showing a step that no longer exists.
+  useEffect(() => {
+    if (!steps.includes(step)) setStep("features");
+  }, [steps, step]);
+
+  // Currency defaults from the site locale (fa -> IRR, en -> USD) and updates the
+  // instant the locale changes — it must never sit frozen at whatever it was when the
+  // customer landed, all the way through pricing/checkout. A signed-in visitor's own
+  // saved preference (or their workspace default) wins over the locale default; an
+  // explicit manual choice this session wins over both, until they change locale again.
+  const [currency, setCurrencyState] = useState<string>(() => localeCurrency(locale));
+  const currencyOverridden = useRef(false);
+
+  const activeTenant = useMemo(
+    () => tenants.find((item) => item.id === activeTenantId) ?? null,
+    [tenants, activeTenantId],
+  );
+
+  useEffect(() => {
+    if (currencyOverridden.current) return;
+    setCurrencyState(user?.preferred_currency || activeTenant?.default_currency || localeCurrency(locale));
+  }, [locale, user?.preferred_currency, activeTenant?.default_currency]);
+
+  function setCurrency(next: string) {
+    currencyOverridden.current = true;
+    setCurrencyState(next);
+  }
 
   const [quote, setQuote] = useState<QuoteView | null>(null);
   const [previews, setPreviews] = useState<PlatformPreview[]>([]);
@@ -157,7 +216,7 @@ export default function BuildPage() {
         platforms: selectedPlatforms,
         features: selectedFeatures,
         currency,
-        business: draft as unknown as Record<string, unknown>,
+        business: { ...draft, feature_config: featureConfig } as unknown as Record<string, unknown>,
       };
 
       const existing = quoteRef.current;
@@ -175,7 +234,7 @@ export default function BuildPage() {
     } finally {
       setPricing(false);
     }
-  }, [templateSlug, selectedPlatforms, selectedFeatures, currency, draft, locale, t]);
+  }, [templateSlug, selectedPlatforms, selectedFeatures, currency, draft, featureConfig, locale, t]);
 
   // Live pricing, debounced so typing a business name does not hammer the API.
   useEffect(() => {
@@ -204,16 +263,34 @@ export default function BuildPage() {
       case "business_info":
         return draft.name.trim().length > 1;
       default:
+        // Collect steps (FAQ, etc.) are optional — content can always be added later
+        // from the bot management panel, so an empty list must never block checkout.
         return true;
     }
   }, [step, selectedPlatforms, templateSlug, draft.name]);
 
+  function stepLabel(name: Step): string {
+    if (name.startsWith("collect:")) {
+      const slug = name.slice("collect:".length);
+      return features.find((item) => item.slug === slug)?.name ?? slug;
+    }
+    return t(`builder.step.${name}`);
+  }
+
+  function goTo(delta: 1 | -1) {
+    const next = stepIndex + delta;
+    if (next >= 0 && next < steps.length) setStep(steps[next]);
+  }
+
   return (
     <div className="space-y-8">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold">{t("builder.title")}</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-semibold">{t("builder.title")}</h1>
+          <CurrencyControl currency={currency} onChange={setCurrency} />
+        </div>
         <ol className="flex flex-wrap gap-2 text-xs">
-          {STEPS.map((name, index) => (
+          {steps.map((name, index) => (
             <li
               key={name}
               className={`rounded-md px-2 py-1 ${
@@ -224,11 +301,11 @@ export default function BuildPage() {
                     : "border border-line text-muted"
               }`}
             >
-              {index + 1}. {t(`builder.step.${name}`)}
+              {index + 1}. {stepLabel(name)}
             </li>
           ))}
           <li className="rounded-md border border-dashed border-line px-2 py-1 text-muted">
-            8. {t("builder.step.order")}
+            {steps.length + 1}. {t("builder.step.order")}
           </li>
         </ol>
       </header>
@@ -267,9 +344,25 @@ export default function BuildPage() {
             />
           ) : null}
 
-          {step === "customize" ? (
-            <StepCustomize draft={draft} onChange={setDraft} currency={currency} onCurrency={setCurrency} />
-          ) : null}
+          {step.startsWith("collect:")
+            ? (() => {
+                const slug = step.slice("collect:".length);
+                const feature = collectFeatures.find((item) => item.slug === slug);
+                if (!feature?.collects) return null;
+                return (
+                  <StepCollect
+                    feature={feature}
+                    schema={feature.collects}
+                    items={featureConfig[slug] ?? []}
+                    onChange={(items) =>
+                      setFeatureConfig((current) => ({ ...current, [slug]: items }))
+                    }
+                  />
+                );
+              })()
+            : null}
+
+          {step === "customize" ? <StepCustomize draft={draft} onChange={setDraft} /> : null}
 
           {step === "preview" ? (
             <div className="space-y-3">
@@ -293,15 +386,15 @@ export default function BuildPage() {
               type="button"
               className="btn-ghost"
               disabled={stepIndex === 0}
-              onClick={() => setStepIndex((index) => Math.max(0, index - 1))}
+              onClick={() => goTo(-1)}
             >
               {t("builder.back")}
             </button>
             <button
               type="button"
               className="btn-primary"
-              disabled={!canAdvance || stepIndex === STEPS.length - 1}
-              onClick={() => setStepIndex((index) => Math.min(STEPS.length - 1, index + 1))}
+              disabled={!canAdvance || stepIndex === steps.length - 1}
+              onClick={() => goTo(1)}
             >
               {t("builder.next")}
             </button>
@@ -333,20 +426,26 @@ function StepPlatform({
       <div className="grid gap-3 sm:grid-cols-2">
         {platforms.map((platform) => {
           const active = selected.includes(platform.slug);
+          const brand = platformBrand(platform.slug);
           return (
             <button
               key={platform.slug}
               type="button"
               onClick={() => onToggle(platform.slug)}
               aria-pressed={active}
-              className={`card text-start transition ${active ? "border-accent" : ""}`}
+              className="card card-selectable flex items-start gap-3 text-start"
             >
-              <span className="block font-medium">{platform.name}</span>
-              {!platform.capabilities_verified ? (
-                <span className="block text-xs text-muted">
-                  {t("builder.platform.provisional")}
-                </span>
-              ) : null}
+              <span className="icon-badge" style={{ background: brand.bg }}>
+                <PlatformIcon slug={platform.slug} size={20} />
+              </span>
+              <span>
+                <span className="block font-medium">{platform.name}</span>
+                {!platform.capabilities_verified ? (
+                  <span className="block text-xs text-muted">
+                    {t("builder.platform.provisional")}
+                  </span>
+                ) : null}
+              </span>
             </button>
           );
         })}
@@ -375,12 +474,15 @@ function StepTemplate({
             type="button"
             onClick={() => onSelect(template.slug)}
             aria-pressed={selected === template.slug}
-            className={`card text-start transition ${
-              selected === template.slug ? "border-accent" : ""
-            }`}
+            className="card card-selectable flex items-start gap-3 text-start"
           >
-            <span className="block font-medium">{template.name}</span>
-            <span className="block text-sm text-muted">{template.description}</span>
+            <span className="icon-badge bg-accent-soft text-accent">
+              <AppIcon name={template.icon} size={20} />
+            </span>
+            <span>
+              <span className="block font-medium">{template.name}</span>
+              <span className="block text-sm text-muted">{template.description}</span>
+            </span>
           </button>
         ))}
       </div>
@@ -472,25 +574,30 @@ function StepFeatures({
               disabled={isBlocked || locked}
               onClick={() => onToggle(feature.slug, isBlocked || locked)}
               aria-pressed={active}
-              className={`card flex items-start justify-between gap-3 text-start transition ${
-                active ? "border-accent" : ""
-              } ${isBlocked ? "opacity-50" : ""}`}
+              className={`card card-selectable flex items-start justify-between gap-3 text-start ${
+                isBlocked ? "opacity-50" : ""
+              }`}
             >
-              <span>
-                <span className="block text-sm font-medium">{feature.name}</span>
-                <span className="block text-xs text-muted">{feature.description}</span>
-                {isBlocked ? (
-                  <span className="mt-1 block text-xs text-red-500">
-                    {t("builder.features.unavailable")} {blocked.get(feature.slug)}
-                  </span>
-                ) : null}
-                {locked ? (
-                  <span className="mt-1 block text-xs text-muted">
-                    {t("builder.features.included")}
-                  </span>
-                ) : null}
+              <span className="flex items-start gap-3">
+                <span className="icon-badge bg-accent-soft text-accent">
+                  <AppIcon name={feature.icon} size={18} />
+                </span>
+                <span>
+                  <span className="block text-sm font-medium">{feature.name}</span>
+                  <span className="block text-xs text-muted">{feature.description}</span>
+                  {isBlocked ? (
+                    <span className="mt-1 block text-xs text-red-500">
+                      {t("builder.features.unavailable")} {blocked.get(feature.slug)}
+                    </span>
+                  ) : null}
+                  {locked ? (
+                    <span className="mt-1 block text-xs text-muted">
+                      {t("builder.features.included")}
+                    </span>
+                  ) : null}
+                </span>
               </span>
-              <span className="text-xs text-muted">{active ? "✓" : ""}</span>
+              {active ? <AppIcon name="check" size={16} className="mt-1 shrink-0 text-accent" /> : null}
             </button>
           );
         })}
@@ -499,16 +606,213 @@ function StepFeatures({
   );
 }
 
+/** Generic add/edit/delete list editor for any `CollectSchema` of `kind:
+ * "repeatable_form"` — driven entirely by the fields the backend declares for the
+ * selected feature, so a new feature that needs the same shape (Stage 3's properties,
+ * courses) needs no new frontend code, only a new manifest. Mirrors
+ * `components/faq-panel.tsx`'s UI exactly; this is its pre-purchase, local-state sibling
+ * — nothing here calls the API, the whole list is submitted with the quote and
+ * materialized into real rows once the order is placed (`apps.provisioning.saga`). */
+function StepCollect({
+  schema,
+  items,
+  onChange,
+}: {
+  feature: FeatureItem;
+  schema: CollectSchema;
+  items: Record<string, string>[];
+  onChange: (items: Record<string, string>[]) => void;
+}) {
+  const t = useTranslations();
+  const emptyDraft = useCallback(
+    () => Object.fromEntries(schema.fields.map((field) => [field.key, ""])),
+    [schema.fields],
+  );
+  const [draft, setDraftItem] = useState<Record<string, string>>(emptyDraft);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<Record<string, string>>(emptyDraft);
+
+  const atMax = items.length >= schema.max_items;
+  const isComplete = (candidate: Record<string, string>) =>
+    schema.fields.every((field) => !field.required || candidate[field.key]?.trim());
+
+  /** A `select` field's stored value is its raw option value ("SALE") — shown to the
+   * customer as its translated label ("For sale"), never the raw code. */
+  function displayValue(field: CollectItemField, value: string): string {
+    if (field.kind !== "select") return value;
+    const option = field.options.find((item) => item.value === value);
+    return option ? t(option.label_key) : value;
+  }
+
+  function addItem(event: React.FormEvent) {
+    event.preventDefault();
+    if (atMax || !isComplete(draft)) return;
+    onChange([...items, draft]);
+    setDraftItem(emptyDraft());
+  }
+
+  function startEdit(index: number) {
+    setEditingIndex(index);
+    setEditDraft(items[index]);
+  }
+
+  function saveEdit() {
+    if (editingIndex === null || !isComplete(editDraft)) return;
+    onChange(items.map((item, index) => (index === editingIndex ? editDraft : item)));
+    setEditingIndex(null);
+  }
+
+  function remove(index: number) {
+    onChange(items.filter((_, i) => i !== index));
+    if (editingIndex === index) setEditingIndex(null);
+  }
+
+  const [primaryField, ...restFields] = schema.fields;
+
+  return (
+    <div className="space-y-3">
+      <h2 className="font-medium">{t(schema.title_key)}</h2>
+      {schema.hint_key ? <p className="text-sm text-muted">{t(schema.hint_key)}</p> : null}
+
+      <ul className="space-y-2">
+        {items.map((item, index) => (
+          <li key={index} className="rounded-lg border border-line p-3 text-sm">
+            {editingIndex === index ? (
+              <div className="space-y-2">
+                {schema.fields.map((field) => (
+                  <FieldInput
+                    key={field.key}
+                    field={field}
+                    value={editDraft[field.key] ?? ""}
+                    onChange={(value) => setEditDraft((cur) => ({ ...cur, [field.key]: value }))}
+                  />
+                ))}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={saveEdit}
+                    disabled={!isComplete(editDraft)}
+                    className="btn-primary"
+                  >
+                    {t("common.save")}
+                  </button>
+                  <button type="button" onClick={() => setEditingIndex(null)} className="btn-ghost">
+                    {t("common.cancel")}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-medium">
+                    {primaryField ? displayValue(primaryField, item[primaryField.key]) : ""}
+                  </p>
+                  <div className="flex shrink-0 gap-2 text-xs">
+                    <button type="button" onClick={() => startEdit(index)} className="text-accent">
+                      {t("bot.faq.edit")}
+                    </button>
+                    <button type="button" onClick={() => remove(index)} className="text-red-500">
+                      {t("bot.faq.delete")}
+                    </button>
+                  </div>
+                </div>
+                {restFields
+                  .filter((field) => item[field.key])
+                  .map((field) => (
+                    <p key={field.key} className="text-muted">
+                      {displayValue(field, item[field.key])}
+                    </p>
+                  ))}
+              </div>
+            )}
+          </li>
+        ))}
+        {items.length === 0 ? <p className="text-sm text-muted">{t("builder.collect.empty")}</p> : null}
+      </ul>
+
+      {atMax ? (
+        <p className="text-xs text-muted">{t("builder.collect.maxReached")}</p>
+      ) : (
+        <form onSubmit={addItem} className="space-y-2 border-t border-line pt-3">
+          {schema.fields.map((field) => (
+            <FieldInput
+              key={field.key}
+              field={field}
+              value={draft[field.key] ?? ""}
+              onChange={(value) => setDraftItem((cur) => ({ ...cur, [field.key]: value }))}
+            />
+          ))}
+          <button type="submit" disabled={!isComplete(draft)} className="btn-primary">
+            {schema.add_label_key ? t(schema.add_label_key) : t("builder.collect.add")}
+          </button>
+        </form>
+      )}
+
+      <p className="text-xs text-muted">{t("builder.collect.optionalHint")}</p>
+    </div>
+  );
+}
+
+function FieldInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: CollectItemField;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const t = useTranslations();
+  if (field.kind === "select") {
+    return (
+      <label className="block space-y-1">
+        <span className="text-sm text-muted">{t(field.label_key)}</span>
+        <select className="field" value={value} onChange={(event) => onChange(event.target.value)}>
+          <option value="" disabled>
+            {t("builder.collect.selectPlaceholder")}
+          </option>
+          {field.options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {t(option.label_key)}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+  if (field.kind === "textarea") {
+    return (
+      <label className="block space-y-1">
+        <span className="text-sm text-muted">{t(field.label_key)}</span>
+        <textarea
+          className="field"
+          rows={2}
+          value={value}
+          maxLength={field.max_length}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </label>
+    );
+  }
+  return (
+    <label className="block space-y-1">
+      <span className="text-sm text-muted">{t(field.label_key)}</span>
+      <input
+        className="field"
+        value={value}
+        maxLength={field.max_length}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
 function StepCustomize({
   draft,
   onChange,
-  currency,
-  onCurrency,
 }: {
   draft: BusinessDraft;
   onChange: (draft: BusinessDraft) => void;
-  currency: string;
-  onCurrency: (currency: string) => void;
 }) {
   const t = useTranslations();
   return (
@@ -526,33 +830,46 @@ function StepCustomize({
         />
       </label>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block space-y-1">
-          <span className="text-sm text-muted">{t("builder.customize.botLocale")}</span>
-          <select
-            className="field"
-            value={draft.bot_locale}
-            onChange={(event) => onChange({ ...draft, bot_locale: event.target.value })}
-          >
-            <option value="">{t("builder.customize.sameAsSite")}</option>
-            <option value="en">English</option>
-            <option value="fa">فارسی</option>
-          </select>
-        </label>
-
-        <label className="block space-y-1">
-          <span className="text-sm text-muted">{t("builder.customize.currency")}</span>
-          <select
-            className="field"
-            value={currency}
-            onChange={(event) => onCurrency(event.target.value)}
-          >
-            <option value="USD">USD</option>
-            <option value="IRR">{t("builder.customize.toman")}</option>
-          </select>
-        </label>
-      </div>
+      <label className="block space-y-1 sm:max-w-xs">
+        <span className="text-sm text-muted">{t("builder.customize.botLocale")}</span>
+        <select
+          className="field"
+          value={draft.bot_locale}
+          onChange={(event) => onChange({ ...draft, bot_locale: event.target.value })}
+        >
+          <option value="">{t("builder.customize.sameAsSite")}</option>
+          <option value="en">English</option>
+          <option value="fa">فارسی</option>
+        </select>
+      </label>
     </div>
+  );
+}
+
+/** Visible on every step — a currency shown or changed only at checkout is exactly the
+ * bug this fixes (I18N.md / product feedback). Defaults from the site locale
+ * (`localeCurrency`) and stays overridable, since a visitor may deliberately want prices
+ * in a currency other than their locale's default. */
+function CurrencyControl({
+  currency,
+  onChange,
+}: {
+  currency: string;
+  onChange: (currency: string) => void;
+}) {
+  const t = useTranslations();
+  return (
+    <label className="flex items-center gap-2 text-xs text-muted">
+      <span>{t("builder.customize.currency")}</span>
+      <select
+        className="field w-auto py-1"
+        value={currency}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="USD">{t("builder.customize.usd")}</option>
+        <option value="IRR">{t("builder.customize.toman")}</option>
+      </select>
+    </label>
   );
 }
 

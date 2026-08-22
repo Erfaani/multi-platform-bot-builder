@@ -9,18 +9,27 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.mail import send_mail
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
 from apps.accounts.models import User
 from apps.audit.services import record_audit
 from apps.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
-from apps.customers.models import Tenant, TenantInvitation, TenantMembership, TenantRole
+from apps.customers.models import (
+    ChannelIdentity,
+    IdentityLinkNonce,
+    Tenant,
+    TenantInvitation,
+    TenantMembership,
+    TenantRole,
+)
 
 logger = logging.getLogger(__name__)
 
 INVITATION_TTL = timedelta(days=7)
+LINK_CODE_TTL = timedelta(minutes=10)
+LINK_CODE_LENGTH = 6
 
 
 def _unique_slug(name: str) -> str:
@@ -303,3 +312,111 @@ def get_invitation_preview(raw_token: str) -> TenantInvitation:
             code="tenant.invalid_invitation", message="This invitation is invalid or has expired."
         )
     return invitation
+
+
+# --------------------------------------------------------------------------- channel linking (spec §47)
+
+
+def _generate_link_code() -> str:
+    return "".join(secrets.choice("0123456789") for _ in range(LINK_CODE_LENGTH))
+
+
+@transaction.atomic
+def create_link_code(*, user: User, platform: str, request_ip: str | None = None) -> IdentityLinkNonce:
+    """A short, human-typeable code, not the model's own UUID default.
+
+    Chosen over a `/start <uuid>` deep link (ADR-pending): identical UX on Telegram and
+    Bale, no per-platform deep-link handling to build. Any code the user already had
+    outstanding for this platform is invalidated first, so only the one just shown on
+    the dashboard can ever be typed successfully.
+    """
+    IdentityLinkNonce.objects.filter(
+        user=user, platform=platform, consumed_at__isnull=True
+    ).update(consumed_at=timezone.now())
+
+    for _ in range(5):
+        try:
+            return IdentityLinkNonce.objects.create(
+                nonce=_generate_link_code(),
+                user=user,
+                platform=platform,
+                expires_at=timezone.now() + LINK_CODE_TTL,
+                created_ip=request_ip,
+            )
+        except IntegrityError:
+            continue
+    raise ConflictError(
+        code="customers.link_code_exhausted", message="Could not generate a code. Please try again."
+    )
+
+
+def list_channel_identities(user: User) -> list[ChannelIdentity]:
+    return list(ChannelIdentity.objects.filter(user=user).order_by("platform"))
+
+
+@transaction.atomic
+def unlink_channel_identity(*, user: User, identity_id: int) -> None:
+    identity = ChannelIdentity.objects.filter(user=user, pk=identity_id).first()
+    if identity is None:
+        raise NotFoundError()
+
+    identity.delete()
+    record_audit(
+        actor=user,
+        action="customers.channel_unlinked",
+        resource_type="channel_identity",
+        resource_id=str(identity_id),
+        metadata={"platform": identity.platform},
+    )
+
+
+@transaction.atomic
+def consume_link_code(
+    *, code: str, platform: str, platform_user_id: str, username: str = ""
+) -> ChannelIdentity | None:
+    """Redeem a code sent to the bot. Returns `None` for any invalid/expired/reused code
+    — deliberately not an error, since the caller (a bot handler) always shows the same
+    generic rejection either way rather than confirming which codes ever existed."""
+    nonce = (
+        IdentityLinkNonce.objects.select_for_update()
+        .filter(nonce=code, platform=platform)
+        .first()
+    )
+    if nonce is None or not nonce.is_usable:
+        return None
+
+    nonce.consumed_at = timezone.now()
+    nonce.save(update_fields=["consumed_at"])
+
+    identity, _ = ChannelIdentity.objects.update_or_create(
+        platform=platform,
+        platform_user_id=platform_user_id,
+        defaults={"user": nonce.user, "username": username, "linked_at": timezone.now()},
+    )
+    record_audit(
+        actor=nonce.user,
+        action="customers.channel_linked",
+        resource_type="channel_identity",
+        resource_id=str(identity.pk),
+        metadata={"platform": platform},
+    )
+    return identity
+
+
+def resolve_tenant_membership(
+    *, platform: str, platform_user_id: str, tenant_id: int
+) -> TenantMembership | None:
+    """Is the platform account behind this message a member of this tenant?
+
+    Used by the bot's owner-admin menu to decide whether to show it at all — never by
+    anything that touches money or a customer's own data, which stay behind the
+    website's ordinary session auth regardless of who messages the bot.
+    """
+    identity = (
+        ChannelIdentity.objects.filter(platform=platform, platform_user_id=platform_user_id)
+        .select_related("user")
+        .first()
+    )
+    if identity is None:
+        return None
+    return TenantMembership.objects.filter(tenant_id=tenant_id, user=identity.user).first()

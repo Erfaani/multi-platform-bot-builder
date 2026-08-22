@@ -19,7 +19,11 @@ __all__ = [
     "PlatformRequirements",
     "MenuEntry",
     "PreviewStep",
+    "CollectOption",
+    "CollectItemField",
+    "CollectSchema",
     "FeatureManifest",
+    "validate_collected_items",
 ]
 
 
@@ -97,6 +101,51 @@ class PreviewStep:
 
 
 @dataclass(frozen=True, slots=True)
+class CollectOption:
+    """One choice within a `kind="select"` field (e.g. property listing type)."""
+
+    value: str
+    label_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class CollectItemField:
+    """One input within a single collected item (e.g. FAQ's "question" and "answer",
+    or a property's "listing type")."""
+
+    key: str
+    label_key: str
+    kind: str = "text"  # "text" | "textarea" | "select"
+    required: bool = True
+    max_length: int = 255
+    #: Only meaningful when `kind == "select"`.
+    options: tuple[CollectOption, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CollectSchema:
+    """Declares that a feature needs specific content from the customer, and what shape
+    it takes — read by the builder to ask a feature-specific question instead of a
+    generic one (e.g. FAQ: "enter your questions and answers", not "tell us about your
+    business" again).
+
+    `kind="repeatable_form"` is the only shape — an add/edit/delete list of items, each
+    with the fields below. It covers both "many small pieces of content" (FAQ's Q&A
+    pairs) and "how would you like to add your X" (real estate's properties, academy's
+    courses): filling the list in *is* "add manually," and the builder's own optional-
+    skip affordance (leaving it empty) already covers "manage this later from the bot
+    management panel" — no separate choice-first UI needed for that distinction.
+    """
+
+    kind: str
+    title_key: str
+    hint_key: str = ""
+    fields: tuple[CollectItemField, ...] = ()
+    add_label_key: str = ""
+    max_items: int = 50
+
+
+@dataclass(frozen=True, slots=True)
 class FeatureManifest:
     slug: str
     category: str
@@ -124,5 +173,43 @@ class FeatureManifest:
     #: True when the feature is part of every bot and cannot be deselected.
     always_on: bool = False
 
+    #: What this feature needs from the customer beyond the generic business details —
+    #: `None` (the common case) means no extra builder step.
+    collects: CollectSchema | None = None
+
     def default_price_keys(self) -> tuple[str, ...]:
         return self.price_keys or (f"feature.{self.slug}.setup",)
+
+
+def validate_collected_items(schema: CollectSchema, raw: object) -> list[dict[str, str]]:
+    """Clean and validate a `feature_config[<slug>]` list against its feature's own
+    `CollectSchema` — shared by the quote-build serializer (so a customer sees a
+    validation error immediately) and the provisioning saga (which must never trust that
+    data survived untouched between an anonymous quote and the order it became).
+
+    Silently drops items missing a required field or past `max_items`, rather than
+    raising, so a customer's 51st FAQ entry is quietly not saved instead of blocking
+    everything else they configured — the builder UI is expected to enforce `max_items`
+    itself and this is a backstop, not the primary UX.
+    """
+    if schema.kind != "repeatable_form" or not isinstance(raw, list):
+        return []
+
+    cleaned: list[dict[str, str]] = []
+    for entry in raw[: schema.max_items]:
+        if not isinstance(entry, dict):
+            continue
+        item: dict[str, str] = {}
+        valid = True
+        for spec in schema.fields:
+            value = str(entry.get(spec.key, "") or "").strip()[: spec.max_length]
+            if spec.kind == "select" and value and value not in {opt.value for opt in spec.options}:
+                valid = False
+                break
+            if spec.required and not value:
+                valid = False
+                break
+            item[spec.key] = value
+        if valid:
+            cleaned.append(item)
+    return cleaned

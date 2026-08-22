@@ -358,6 +358,51 @@ def cancel_appointment(*, appointment: Appointment, actor, reason: str = "") -> 
     return locked
 
 
+@transaction.atomic
+def reschedule_appointment(*, appointment: Appointment, actor, starts_at: datetime) -> Appointment:
+    """Move a confirmed appointment to a new time, keeping the same row.
+
+    Relies on the same EXCLUDE constraint `book_appointment` does for its final race
+    check — a concurrent booking of the new slot surfaces here as `IntegrityError`
+    rather than silently overlapping two appointments.
+    """
+    locked = Appointment.objects.select_for_update().get(pk=appointment.pk)
+    if locked.status != AppointmentStatus.CONFIRMED:
+        raise ConflictError(
+            code="appointment.not_reschedulable", message="This appointment cannot be rescheduled."
+        )
+    if starts_at < dj_timezone.now():
+        raise ConflictError(code="appointment.slot_in_the_past", message="That time has already passed.")
+
+    ends_at = starts_at + timedelta(minutes=locked.service.duration_minutes)
+
+    try:
+        locked.starts_at = starts_at
+        locked.ends_at = ends_at
+        locked.save(update_fields=["starts_at", "ends_at", "updated_at"])
+    except IntegrityError as exc:
+        raise ConflictError(
+            code="appointment.slot_taken", message="That time was just booked by someone else."
+        ) from exc
+
+    record_audit(
+        actor=actor, action="appointment.rescheduled", resource_type="appointment",
+        resource_id=str(locked.public_id), tenant=locked.tenant,
+        metadata={"starts_at": starts_at.isoformat()},
+    )
+    publish(
+        "appointment.rescheduled",
+        {
+            "tenant_id": str(locked.tenant.public_id),
+            "bot_id": str(locked.bot.public_id),
+            "appointment_id": str(locked.public_id),
+            "dedupe_key": f"appointment:{locked.public_id}:rescheduled:{starts_at.isoformat()}",
+            "starts_at": starts_at.isoformat(),
+        },
+    )
+    return locked
+
+
 def list_appointments(bot, *, since=None, upcoming_only: bool = True) -> list[Appointment]:
     qs = Appointment.objects.filter(bot=bot).select_related("service", "staff", "contact")
     if upcoming_only:

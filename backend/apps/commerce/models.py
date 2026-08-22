@@ -61,6 +61,124 @@ class Product(TenantOwnedModel):
         return self.stock is None or self.stock > 0
 
 
+class ProductImage(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="images")
+    #: `public/...` is the one prefix `config/urls.py` actually serves — see its comment
+    #: and SECURITY.md §7. Never reuse this prefix for anything that must stay private;
+    #: `PaymentReceipt.file` (`apps.payments.models`) is the private-upload pattern.
+    file = models.FileField(upload_to="public/products/%Y/%m/", max_length=255)
+    sort_order = models.PositiveSmallIntegerField(default=100)
+
+    class Meta:
+        db_table = "product_image"
+        ordering = ("sort_order", "id")
+
+    def __str__(self) -> str:
+        return f"image for product #{self.product_id}"
+
+
+class PropertyListingType(models.TextChoices):
+    SALE = "SALE", _("For sale")
+    RENT = "RENT", _("For rent")
+
+
+class PropertyType(models.TextChoices):
+    APARTMENT = "APARTMENT", _("Apartment")
+    HOUSE = "HOUSE", _("House")
+    LAND = "LAND", _("Land")
+    COMMERCIAL = "COMMERCIAL", _("Commercial")
+    OTHER = "OTHER", _("Other")
+
+
+class PropertyListing(TenantOwnedModel):
+    """A real-estate listing — deliberately its own model rather than a `Product`
+    (DATABASE.md §9a): a property has no meaningful "stock," and needs fields
+    (bedrooms, area, listing type) a generic product has no reason to carry.
+    """
+
+    bot = models.ForeignKey("bots.Bot", on_delete=models.CASCADE, related_name="property_listings")
+
+    title = models.CharField(max_length=128)
+    description = models.TextField(blank=True)
+    listing_type = models.CharField(max_length=16, choices=PropertyListingType.choices)
+    property_type = models.CharField(max_length=16, choices=PropertyType.choices)
+
+    bedrooms = models.PositiveSmallIntegerField(null=True, blank=True)
+    bathrooms = models.PositiveSmallIntegerField(null=True, blank=True)
+    area_sqm = models.PositiveIntegerField(null=True, blank=True)
+    address = models.CharField(max_length=255, blank=True)
+
+    price_minor = models.BigIntegerField()
+    currency = CurrencyCodeField()
+    price = MoneyProxy("price_minor", "currency")
+
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=100)
+
+    class Meta:
+        db_table = "property_listing"
+        ordering = ("sort_order", "id")
+        indexes = [models.Index(fields=["bot", "is_active"], name="property_bot_active_idx")]
+
+    def __str__(self) -> str:
+        return self.title
+
+
+class PropertyImage(models.Model):
+    property = models.ForeignKey(PropertyListing, on_delete=models.CASCADE, related_name="images")
+    file = models.FileField(upload_to="public/properties/%Y/%m/", max_length=255)
+    sort_order = models.PositiveSmallIntegerField(default=100)
+
+    class Meta:
+        db_table = "property_image"
+        ordering = ("sort_order", "id")
+
+    def __str__(self) -> str:
+        return f"image for property #{self.property_id}"
+
+
+class CourseOffering(TenantOwnedModel):
+    """An academy course — its own model for the same reason `PropertyListing` is:
+    schedule, instructor, and capacity/enrollment have no home on a generic `Product`.
+    """
+
+    bot = models.ForeignKey("bots.Bot", on_delete=models.CASCADE, related_name="course_offerings")
+
+    title = models.CharField(max_length=128)
+    description = models.TextField(blank=True)
+    instructor_name = models.CharField(max_length=128, blank=True)
+
+    price_minor = models.BigIntegerField()
+    currency = CurrencyCodeField()
+    price = MoneyProxy("price_minor", "currency")
+
+    starts_at = models.DateTimeField(null=True, blank=True)
+    #: Free text ("6 weeks," "3 sessions") — course cadence varies too much across
+    #: business types to model as a rigid duration field.
+    duration_label = models.CharField(max_length=64, blank=True)
+
+    #: Null means not tracked — always enrollable. Mirrors `Product.stock`'s convention.
+    capacity = models.PositiveIntegerField(null=True, blank=True)
+    enrolled_count = models.PositiveIntegerField(default=0)
+
+    thumbnail = models.FileField(upload_to="public/courses/%Y/%m/", max_length=255, blank=True)
+
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=100)
+
+    class Meta:
+        db_table = "course_offering"
+        ordering = ("sort_order", "id")
+        indexes = [models.Index(fields=["bot", "is_active"], name="course_bot_active_idx")]
+
+    def __str__(self) -> str:
+        return self.title
+
+    @property
+    def has_capacity(self) -> bool:
+        return self.capacity is None or self.enrolled_count < self.capacity
+
+
 class Cart(TenantOwnedModel):
     """One open cart per contact per bot — reused across the conversation until checkout."""
 

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from apps.features.manifests import (
+    CollectItemField,
+    CollectOption,
+    CollectSchema,
     FeatureCategory,
     FeatureManifest,
     MenuEntry,
@@ -109,4 +112,131 @@ FOOD_ORDERING = FeatureManifest(
     ),
 )
 
-MANIFESTS = (PRODUCT_CATALOG, CART_ORDERS, TABLE_RESERVATION, FOOD_ORDERING)
+PROPERTY_LISTINGS = FeatureManifest(
+    slug="property_listings",
+    category=FeatureCategory.COMMERCE,
+    name_key="feature.property_listings.name",
+    description_key="feature.property_listings.description",
+    icon="home",
+    requires=("business_profile",),
+    menu=(MenuEntry(label_key="menu.properties", route="property_listings:list", sort_order=5),),
+    price_keys=("feature.property_listings.setup", "feature.property_listings.monthly"),
+    permissions=("commerce.view", "commerce.manage"),
+    preview=(
+        PreviewStep(
+            title_key="preview.step.properties",
+            user_says_key="menu.properties",
+            reply=Reply(
+                text_key="bot.commerce.select_property",
+                choices=[
+                    Choice(label_key="bot.commerce.sample_property_1", value="property_listings:detail.1"),
+                    Choice(label_key="bot.commerce.sample_property_2", value="property_listings:detail.2"),
+                ],
+            ),
+        ),
+        PreviewStep(
+            title_key="preview.step.property_detail",
+            reply=Reply(text_key="bot.commerce.property_detail"),
+        ),
+    ),
+    collects=CollectSchema(
+        kind="repeatable_form",
+        title_key="builder.collect.property_listings.title",
+        hint_key="builder.collect.property_listings.hint",
+        fields=(
+            CollectItemField(key="title", label_key="builder.collect.property_listings.title_field", max_length=128),
+            CollectItemField(
+                key="listing_type",
+                label_key="builder.collect.property_listings.listing_type",
+                kind="select",
+                options=(
+                    CollectOption(value="SALE", label_key="builder.collect.property_listings.sale"),
+                    CollectOption(value="RENT", label_key="builder.collect.property_listings.rent"),
+                ),
+            ),
+            CollectItemField(
+                key="property_type",
+                label_key="builder.collect.property_listings.property_type",
+                kind="select",
+                options=(
+                    CollectOption(value="APARTMENT", label_key="builder.collect.property_listings.apartment"),
+                    CollectOption(value="HOUSE", label_key="builder.collect.property_listings.house"),
+                    CollectOption(value="LAND", label_key="builder.collect.property_listings.land"),
+                    CollectOption(value="COMMERCIAL", label_key="builder.collect.property_listings.commercial"),
+                ),
+            ),
+            CollectItemField(key="price", label_key="builder.collect.property_listings.price", max_length=32),
+            CollectItemField(
+                key="address", label_key="builder.collect.property_listings.address",
+                required=False, max_length=255,
+            ),
+            CollectItemField(
+                key="description", label_key="builder.collect.property_listings.description",
+                kind="textarea", required=False, max_length=2000,
+            ),
+        ),
+        add_label_key="builder.collect.property_listings.add",
+        max_items=30,
+    ),
+)
+
+COURSE_CATALOG = FeatureManifest(
+    slug="course_catalog",
+    category=FeatureCategory.COMMERCE,
+    name_key="feature.course_catalog.name",
+    description_key="feature.course_catalog.description",
+    icon="graduation-cap",
+    requires=("business_profile",),
+    menu=(MenuEntry(label_key="menu.courses", route="course_catalog:list", sort_order=5),),
+    price_keys=("feature.course_catalog.setup", "feature.course_catalog.monthly"),
+    permissions=("commerce.view", "commerce.manage"),
+    preview=(
+        PreviewStep(
+            title_key="preview.step.courses",
+            user_says_key="menu.courses",
+            reply=Reply(
+                text_key="bot.commerce.select_course",
+                choices=[
+                    Choice(label_key="bot.commerce.sample_course_1", value="course_catalog:detail.1"),
+                    Choice(label_key="bot.commerce.sample_course_2", value="course_catalog:detail.2"),
+                ],
+            ),
+        ),
+        PreviewStep(
+            title_key="preview.step.course_detail",
+            reply=Reply(text_key="bot.commerce.course_detail"),
+        ),
+    ),
+    collects=CollectSchema(
+        kind="repeatable_form",
+        title_key="builder.collect.course_catalog.title",
+        hint_key="builder.collect.course_catalog.hint",
+        fields=(
+            CollectItemField(key="title", label_key="builder.collect.course_catalog.title_field", max_length=128),
+            CollectItemField(
+                key="instructor_name", label_key="builder.collect.course_catalog.instructor",
+                required=False, max_length=128,
+            ),
+            CollectItemField(key="price", label_key="builder.collect.course_catalog.price", max_length=32),
+            CollectItemField(
+                key="duration_label", label_key="builder.collect.course_catalog.duration",
+                required=False, max_length=64,
+            ),
+            CollectItemField(
+                key="description", label_key="builder.collect.course_catalog.description",
+                kind="textarea", required=False, max_length=2000,
+            ),
+        ),
+        add_label_key="builder.collect.course_catalog.add",
+        max_items=30,
+    ),
+)
+
+MANIFESTS = (
+    PRODUCT_CATALOG,
+    CART_ORDERS,
+    TABLE_RESERVATION,
+    FOOD_ORDERING,
+    PROPERTY_LISTINGS,
+    COURSE_CATALOG,
+)

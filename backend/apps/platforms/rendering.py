@@ -39,6 +39,7 @@ def render_with_capabilities(
     notes: list[str] = []
 
     labels = [_translate(ctx, choice.label_key, choice.params) for choice in reply.choices]
+    web_app_urls: list[list[str | None]] = []
 
     if not labels:
         layout: ButtonLayout = ButtonLayout.NONE
@@ -46,6 +47,9 @@ def render_with_capabilities(
     elif capabilities.inline_keyboards:
         layout = ButtonLayout.INLINE
         buttons = chunk_buttons(labels, capabilities.max_buttons_per_row)
+        if capabilities.web_app:
+            urls = [choice.web_app_url for choice in reply.choices]
+            web_app_urls = chunk_buttons(urls, capabilities.max_buttons_per_row)
     elif capabilities.reply_keyboards:
         layout = ButtonLayout.REPLY
         buttons = chunk_buttons(labels, capabilities.max_buttons_per_row)
@@ -62,13 +66,18 @@ def render_with_capabilities(
         total = sum(len(row) for row in buttons)
         if total > capabilities.max_buttons_total:
             kept: list[list[str]] = []
+            kept_urls: list[list[str | None]] = []
             remaining = capabilities.max_buttons_total
-            for row in buttons:
+            for index, row in enumerate(buttons):
                 if remaining <= 0:
                     break
                 kept.append(row[:remaining])
+                if web_app_urls:
+                    kept_urls.append(web_app_urls[index][:remaining])
                 remaining -= len(kept[-1])
             buttons = kept
+            if web_app_urls:
+                web_app_urls = kept_urls
             notes.append(
                 f"Only the first {capabilities.max_buttons_total} options fit on one screen; "
                 "the rest need pagination."
@@ -87,6 +96,7 @@ def render_with_capabilities(
     return RenderedMessage(
         text=text,
         buttons=buttons,
+        web_app_urls=web_app_urls,
         layout=layout,
         attachments=attachments,
         expects=reply.expects,

@@ -112,6 +112,14 @@ FEATURE_COPY: dict[str, tuple[str, str, str, str, int]] = {
         "AI knowledge base", "Upload documents the assistant can learn from.",
         "پایگاه دانش هوش مصنوعی", "بارگذاری اسنادی که دستیار از آن‌ها پاسخ می‌دهد.", 220,
     ),
+    "property_listings": (
+        "Property listings", "Real-estate listings with photos, price and details.",
+        "آگهی‌های ملکی", "آگهی‌های املاک همراه با تصویر، قیمت و جزئیات.", 230,
+    ),
+    "course_catalog": (
+        "Course catalogue", "Courses with schedule, instructor and enrollment.",
+        "کاتالوگ دوره‌ها", "دوره‌ها همراه با زمان‌بندی، مدرس و ثبت‌نام.", 240,
+    ),
 }
 
 # --------------------------------------------------------------------------- templates
@@ -160,18 +168,18 @@ TEMPLATES: dict[str, tuple] = {
         "آموزشگاه", "دوره‌ها، ثبت‌نام و مشاوره.",
         "graduation-cap", 50,
         ["business_profile"],
-        ["contact", "faq", "product_catalog", "consultation_request"],
+        ["contact", "faq", "course_catalog", "consultation_request"],
         ["location", "working_hours", "lead_capture", "crm_pipeline", "owner_notifications",
-         "analytics", "ai_assistant", "custom_menu"],
+         "analytics", "ai_assistant", "custom_menu", "product_catalog"],
     ),
     "real_estate": (
         "Real estate", "Property listings, enquiries and agent contact.",
         "املاک", "آگهی‌ها، درخواست بازدید و ارتباط با مشاور.",
         "home", 60,
         ["business_profile"],
-        ["contact", "product_catalog", "consultation_request", "lead_capture"],
+        ["contact", "property_listings", "consultation_request", "lead_capture"],
         ["location", "faq", "crm_pipeline", "owner_notifications", "analytics",
-         "ai_assistant", "custom_menu"],
+         "ai_assistant", "custom_menu", "product_catalog"],
     ),
     "services": (
         "Service business", "Services, pricing, bookings and enquiries.",
@@ -242,6 +250,8 @@ FEATURE_PRICES: dict[str, tuple[tuple[int, int], tuple[int, int] | None]] = {
     "analytics": ((2900, 13_000_000), (900, 4_000_000)),
     "ai_assistant": ((7900, 35_000_000), (2900, 13_000_000)),
     "ai_knowledge_base": ((4900, 22_000_000), (1900, 8_500_000)),
+    "property_listings": ((4900, 22_000_000), (900, 4_000_000)),
+    "course_catalog": ((4900, 22_000_000), (900, 4_000_000)),
 }
 
 HOSTING = (1900, 8_500_000)

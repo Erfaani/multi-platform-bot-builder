@@ -228,3 +228,75 @@ class TestPreviewEndpoint:
 
         quote = Quote.objects.get(public_id=body["id"])
         assert quote.converted_order_id is None
+
+
+class TestDynamicConfiguration:
+    """Phase 10.5: a feature can declare what content it needs from the customer
+    (`CollectSchema`), and the builder asks for it — FAQ's Q&A pairs are the first real
+    case. `apps/features/manifests.py::validate_collected_items` is exercised through the
+    same public endpoint a customer's browser calls, not just as a unit test, since the
+    validation lives in `BuildQuoteSerializer.validate()`."""
+
+    def test_the_faq_feature_declares_a_collect_schema(self, api, catalogue):
+        features = {row["slug"]: row for row in api.get("/api/v1/features/").json()}
+        faq = features["faq"]
+        assert faq["collects"]["kind"] == "repeatable_form"
+        field_keys = {f["key"] for f in faq["collects"]["fields"]}
+        assert field_keys == {"question", "answer"}
+
+    def test_a_feature_with_no_collect_schema_is_null(self, api, catalogue):
+        features = {row["slug"]: row for row in api.get("/api/v1/features/").json()}
+        assert features["contact"]["collects"] is None
+
+    def test_faq_content_survives_onto_the_quote(self, api, catalogue):
+        body = create_quote(
+            api,
+            business={
+                "feature_config": {
+                    "faq": [{"question": "Do you deliver?", "answer": "Yes, citywide."}]
+                }
+            },
+        ).json()
+        assert body["business_draft"]["feature_config"]["faq"] == [
+            {"question": "Do you deliver?", "answer": "Yes, citywide."}
+        ]
+
+    def test_an_incomplete_item_is_dropped_not_saved_half_written(self, api, catalogue):
+        body = create_quote(
+            api,
+            business={"feature_config": {"faq": [{"question": "Only a question, no answer"}]}},
+        ).json()
+        # Nothing survived validation, so the key itself is absent rather than an
+        # empty list sitting in the draft for no reason.
+        assert "faq" not in body["business_draft"]["feature_config"]
+
+    def test_an_overlong_answer_is_truncated_not_rejected(self, api, catalogue):
+        long_answer = "x" * 3000
+        body = create_quote(
+            api,
+            business={
+                "feature_config": {"faq": [{"question": "Q", "answer": long_answer}]}
+            },
+        ).json()
+        assert len(body["business_draft"]["feature_config"]["faq"][0]["answer"]) == 2000
+
+    def test_content_for_a_feature_not_actually_selected_is_dropped(self, api, catalogue):
+        """`features` on this quote is only `["faq"]` — content offered for a feature
+        that was never selected must not be trusted, whatever the reason (stale client
+        state or tampering)."""
+        body = create_quote(
+            api,
+            features=["faq"],
+            business={
+                "feature_config": {
+                    "faq": [{"question": "Q", "answer": "A"}],
+                    "product_catalog": [{"name": "Should not survive"}],
+                }
+            },
+        ).json()
+        assert "product_catalog" not in body["business_draft"]["feature_config"]
+
+    def test_more_than_max_items_is_capped(self, api, catalogue):
+        items = [{"question": f"Q{i}", "answer": f"A{i}"} for i in range(60)]
+        body = create_quote(api, business={"feature_config": {"faq": items}}).json()
+        assert len(body["business_draft"]["feature_config"]["faq"]) == 50

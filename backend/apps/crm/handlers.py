@@ -110,15 +110,56 @@ def capture_phone(event, session, ctx, value: str = "", locale: str = "en") -> H
         session.reset()
         return _main_menu(ctx)
 
+    from apps.bots import services as bots_services
+
     text = (event.text or "").strip()
-    if not _looks_like_phone(text):
+    policy = bots_services.get_input_restrictions(ctx.bot_id)
+    if not _looks_like_phone(text) or not bots_services.is_phone_allowed(policy, text):
         return HandlerResult(
             reply=Reply(text_key="bot.crm.invalid_phone", expects="phone"),
             next_state="crm:awaiting_phone",
         )
 
+    if policy.collect_email_on_consultation:
+        session.set("phone", text)
+        return HandlerResult(
+            reply=Reply(text_key="bot.crm.ask_email", expects="email"),
+            next_state="crm:awaiting_email",
+        )
+
     bot, contact = _bot_and_contact(ctx, event)
     services.create_lead(bot=bot, contact=contact, source=LeadSource.CONSULTATION_REQUEST, phone=text)
+
+    session.reset()
+    return HandlerResult(
+        reply=Reply(text_key="bot.crm.phone_received", choices=_menu_choices(ctx)), next_state="IDLE"
+    )
+
+
+@state("crm:awaiting_email")
+def capture_email(event, session, ctx, value: str = "", locale: str = "en") -> HandlerResult:
+    if event.kind == "command":
+        session.reset()
+        return _main_menu(ctx)
+
+    from apps.bots import services as bots_services
+
+    text = (event.text or "").strip()
+    policy = bots_services.get_input_restrictions(ctx.bot_id)
+    if not bots_services.is_email_allowed(policy, text):
+        return HandlerResult(
+            reply=Reply(text_key="bot.crm.invalid_email", expects="email"),
+            next_state="crm:awaiting_email",
+        )
+
+    bot, contact = _bot_and_contact(ctx, event)
+    services.create_lead(
+        bot=bot,
+        contact=contact,
+        source=LeadSource.CONSULTATION_REQUEST,
+        phone=session.get("phone", ""),
+        email=text,
+    )
 
     session.reset()
     return HandlerResult(

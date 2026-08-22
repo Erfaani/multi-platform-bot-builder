@@ -20,6 +20,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "fa": "به {business} خوش آمدید! 👋\nچطور می‌توانیم کمکتان کنیم؟",
     },
     "menu.about": {"en": "About us", "fa": "درباره ما"},
+    "menu.open_app": {"en": "🛍 Open app", "fa": "🛍 باز کردن اپلیکیشن"},
     "menu.contact": {"en": "Contact", "fa": "تماس با ما"},
     "menu.location": {"en": "Location", "fa": "آدرس"},
     "menu.working_hours": {"en": "Opening hours", "fa": "ساعات کاری"},
@@ -152,6 +153,36 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Your cart is empty.",
         "fa": "سبد خرید شما خالی است.",
     },
+    "menu.properties": {"en": "Browse properties", "fa": "مشاهده املاک"},
+    "bot.commerce.select_property": {
+        "en": "Here are our current listings:",
+        "fa": "این آگهی‌های فعلی ماست:",
+    },
+    "bot.commerce.sample_property_1": {"en": "2-bed apartment — downtown", "fa": "آپارتمان ۲ خواب — مرکز شهر"},
+    "bot.commerce.sample_property_2": {"en": "Family house — garden", "fa": "خانهٔ ویلایی — با حیاط"},
+    "bot.commerce.property_detail": {
+        "en": "{title} — {price}\n{property_type}, {listing_type}\n{facts}\n{address}\n\n{description}",
+        "fa": "{title} — {price}\n{property_type}، {listing_type}\n{facts}\n{address}\n\n{description}",
+    },
+    "bot.commerce.no_properties": {
+        "en": "No properties listed yet — please check back soon.",
+        "fa": "هنوز آگهی‌ای ثبت نشده — بعداً دوباره سر بزنید.",
+    },
+    "menu.courses": {"en": "Browse courses", "fa": "مشاهده دوره‌ها"},
+    "bot.commerce.select_course": {
+        "en": "Here are our current courses:",
+        "fa": "این دوره‌های فعلی ماست:",
+    },
+    "bot.commerce.sample_course_1": {"en": "Beginner Photoshop", "fa": "فتوشاپ مقدماتی"},
+    "bot.commerce.sample_course_2": {"en": "Advanced Excel", "fa": "اکسل پیشرفته"},
+    "bot.commerce.course_detail": {
+        "en": "{title} — {price}\nInstructor: {instructor}\nDuration: {duration}\n\n{description}",
+        "fa": "{title} — {price}\nمدرس: {instructor}\nمدت: {duration}\n\n{description}",
+    },
+    "bot.commerce.no_courses": {
+        "en": "No courses listed yet — please check back soon.",
+        "fa": "هنوز دوره‌ای ثبت نشده — بعداً دوباره سر بزنید.",
+    },
 
     # --- restaurant ---
     "bot.restaurant.select_party_size": {
@@ -201,6 +232,14 @@ MESSAGES: dict[str, dict[str, str]] = {
     "bot.crm.phone_received": {
         "en": "Thanks! We'll call you back soon.",
         "fa": "متشکریم! به‌زودی با شما تماس می‌گیریم.",
+    },
+    "bot.crm.ask_email": {
+        "en": "And your email address?",
+        "fa": "ایمیل شما چیست؟",
+    },
+    "bot.crm.invalid_email": {
+        "en": "That doesn't look like a valid email address. Please try again.",
+        "fa": "این ایمیل معتبر به‌نظر نمی‌رسد. لطفاً دوباره تلاش کنید.",
     },
     "bot.crm.ask_rating": {
         "en": "How would you rate your experience?",
@@ -261,6 +300,70 @@ MESSAGES: dict[str, dict[str, str]] = {
         "fa": "کمی طول کشید، بنابراین از ابتدا شروع می‌کنیم. این منوی اصلی است.",
     },
 
+    # --- Telegram Mini App (Phase 10.5) ---
+    "bot.miniapp.launch": {
+        "en": "Browse and book right here — tap below to open the app.",
+        "fa": "همین‌جا مرور و رزرو کنید — برای باز کردن اپلیکیشن ضربه بزنید.",
+    },
+    "bot.miniapp.unavailable": {
+        "en": "The in-chat app isn't available on this platform yet — use the menu below instead.",
+        "fa": "اپلیکیشن داخل چت هنوز در این پلتفرم در دسترس نیست — از منوی زیر استفاده کنید.",
+    },
+
+    # --- account linking (spec §47) ---
+    "bot.link.usage": {
+        "en": "Send /link followed by the code shown on your dashboard, e.g. /link 483920.",
+        "fa": "کد نمایش‌داده‌شده در داشبورد را بعد از /link بفرستید، مثل /link 483920.",
+    },
+    "bot.link.invalid_code": {
+        "en": "That code isn't valid or has expired. Generate a new one from My Bots → Bot Management.",
+        "fa": "این کد نامعتبر یا منقضی شده است. کد جدیدی از «ربات‌های من ← مدیریت ربات» بسازید.",
+    },
+    "bot.link.success": {
+        "en": "Your account is linked! Send /admin to manage this bot from here.",
+        "fa": "حساب شما متصل شد! برای مدیریت این ربات از همینجا، /admin را بفرستید.",
+    },
+
+    # --- owner admin menu (day-to-day management, spec's hybrid model) ---
+    "bot.admin.not_linked": {
+        "en": "This is for bot managers. Connect your account from My Bots → Bot Management on the website, then send /link with the code shown there.",
+        "fa": "این بخش برای مدیران ربات است. از «ربات‌های من ← مدیریت ربات» در وبسایت حساب خود را متصل کنید و سپس /link را با کد نمایش‌داده‌شده بفرستید.",
+    },
+    "bot.admin.menu": {
+        "en": "Bot management — what would you like to do?",
+        "fa": "مدیریت ربات — چه کاری می‌خواهید انجام دهید؟",
+    },
+    "bot.admin.recentLeads": {"en": "Recent leads", "fa": "سرنخ‌های اخیر"},
+    "bot.admin.todaysAppointments": {"en": "Upcoming appointments", "fa": "نوبت‌های پیش‌رو"},
+    "bot.admin.addFaq": {"en": "Add an FAQ", "fa": "افزودن سوال متداول"},
+    "bot.admin.moreSettings": {"en": "More settings", "fa": "تنظیمات بیشتر"},
+    "bot.admin.noLeads": {"en": "No leads yet.", "fa": "هنوز سرنخی ثبت نشده."},
+    "bot.admin.leadsList": {"en": "Recent leads:\n{lines}", "fa": "سرنخ‌های اخیر:\n{lines}"},
+    "bot.admin.noAppointments": {
+        "en": "Nothing in the next 24 hours.",
+        "fa": "در ۲۴ ساعت آینده چیزی ثبت نشده.",
+    },
+    "bot.admin.appointmentsList": {
+        "en": "Upcoming appointments:\n{lines}",
+        "fa": "نوبت‌های پیش‌رو:\n{lines}",
+    },
+    "bot.admin.faqAskQuestion": {
+        "en": "What's the question?",
+        "fa": "سوال چیست؟",
+    },
+    "bot.admin.faqAskAnswer": {
+        "en": "And the answer?",
+        "fa": "و پاسخ آن؟",
+    },
+    "bot.admin.faqAdded": {
+        "en": "Added! It's live for customers right away.",
+        "fa": "افزوده شد! همین حالا برای مشتریان فعال است.",
+    },
+    "bot.admin.moreSettingsInfo": {
+        "en": "That's managed from the website: My Bots → Bot Management.",
+        "fa": "این بخش از وبسایت مدیریت می‌شود: «ربات‌های من ← مدیریت ربات».",
+    },
+
     # --- business content, filled from what the customer entered ---
     "bot.business.about.custom": {"en": "{business}\n\n{description}", "fa": "{business}\n\n{description}"},
     "bot.business.contact.custom": {
@@ -300,6 +403,152 @@ MESSAGES: dict[str, dict[str, str]] = {
     "preview.step.ai_answer": {"en": "The assistant answers", "fa": "پاسخ دستیار"},
     "preview.step.owner_notification": {"en": "Owner alert", "fa": "اعلان مدیر"},
     "preview.step.main_menu": {"en": "Main menu", "fa": "منوی اصلی"},
+
+    # --- chat-native bot ordering (Phase 10.5, the platform's own builder bot) ---
+    "menu.build_bot": {"en": "Build a new bot", "fa": "ساخت ربات جدید"},
+    "menu.order_status": {"en": "Check my order status", "fa": "بررسی وضعیت سفارش"},
+    "bot.builder.no_templates": {
+        "en": "Nothing is available to build right now — please try again shortly.",
+        "fa": "در حال حاضر چیزی برای ساخت موجود نیست — کمی بعد دوباره تلاش کنید.",
+    },
+    "bot.builder.pick_template": {
+        "en": "Let's build your bot! What kind of business is this for?",
+        "fa": "بیایید ربات شما را بسازیم! این ربات برای چه نوع کسب‌وکاری است؟",
+    },
+    "bot.builder.pick_features": {
+        "en": "Choose what your bot should do. Tap to toggle, then Continue.\nAlways included: {included}",
+        "fa": "کارهایی که ربات شما باید انجام دهد را انتخاب کنید. برای تغییر ضربه بزنید، سپس ادامه.\nهمیشه شامل: {included}",
+    },
+    "bot.builder.continue": {"en": "Continue ➜", "fa": "ادامه ➜"},
+    "bot.builder.addOne": {"en": "Add one now", "fa": "همین حالا اضافه کنم"},
+    "bot.builder.skipFeature": {
+        "en": "Skip — I'll add this later", "fa": "رد شوم — بعداً اضافه می‌کنم",
+    },
+    "bot.builder.addAnother": {"en": "Add another", "fa": "افزودن مورد دیگر"},
+    "bot.builder.doneWithFeature": {"en": "I'm done", "fa": "تمام شد"},
+    "builder.collect.faq.title": {
+        "en": "Enter your frequently asked questions and answers",
+        "fa": "پرسش‌ها و پاسخ‌های متداول خود را وارد کنید",
+    },
+    "builder.collect.property_listings.title": {
+        "en": "How would you like to add your property listings?",
+        "fa": "چطور می‌خواهید آگهی‌های ملکی خود را اضافه کنید؟",
+    },
+    "builder.collect.course_catalog.title": {
+        "en": "How would you like to add your courses?",
+        "fa": "چطور می‌خواهید دوره‌های خود را اضافه کنید؟",
+    },
+    "bot.builder.item_added": {
+        "en": "Added! ({count} so far) Add another, or move on?",
+        "fa": "افزوده شد! (تا الان {count} مورد) مورد دیگری اضافه کنید یا ادامه بدهید؟",
+    },
+    "bot.builder.ask_business_name": {
+        "en": "What's your business called?",
+        "fa": "نام کسب‌وکار شما چیست؟",
+    },
+    "bot.builder.price_summary": {
+        "en": "Here's the price:\nOne-time setup: {once}\nMonthly: {monthly}\nDue now: {total}",
+        "fa": "این هزینه آن است:\nراه‌اندازی یک‌بار: {once}\nماهانه: {monthly}\nقابل پرداخت الان: {total}",
+    },
+    "bot.builder.placeOrder": {"en": "Place order", "fa": "ثبت سفارش"},
+    "bot.builder.cancel": {"en": "Cancel", "fa": "انصراف"},
+    "bot.builder.ask_email": {
+        "en": "Almost done! What's your email? We'll create your account with it.",
+        "fa": "تقریباً تمام شد! ایمیل شما چیست؟ حساب شما را با آن می‌سازیم.",
+    },
+    "bot.builder.invalid_email": {
+        "en": "That doesn't look like a valid email. Please try again.",
+        "fa": "این یک ایمیل معتبر به نظر نمی‌رسد. دوباره امتحان کنید.",
+    },
+    "bot.builder.email_taken": {
+        "en": "An account already exists for that email. Please finish your order from the website, or connect your existing account (My Bots → Bot Management → link this bot) and message us again.",
+        "fa": "برای این ایمیل قبلاً حسابی ساخته شده است. لطفاً سفارش خود را از وبسایت تکمیل کنید، یا حساب موجود خود را متصل کنید («ربات‌های من ← مدیریت ربات ← اتصال این ربات») و دوباره پیام دهید.",
+    },
+    "bot.builder.no_payment_methods": {
+        "en": "No payment method is available for this order right now — please try again from the website.",
+        "fa": "در حال حاضر روش پرداختی برای این سفارش موجود نیست — لطفاً از وبسایت دوباره تلاش کنید.",
+    },
+    "bot.builder.choose_payment_method": {
+        "en": "How would you like to pay?",
+        "fa": "چگونه می‌خواهید پرداخت کنید؟",
+    },
+    "bot.builder.payment_instructions": {
+        "en": "{instructions}\n\nTo finish, upload your payment receipt here: {link}\nWe'll set up your bot as soon as it's confirmed — check progress any time from the menu.",
+        "fa": "{instructions}\n\nبرای اتمام، رسید پرداخت خود را اینجا بارگذاری کنید: {link}\nبه محض تأیید، ربات شما راه‌اندازی می‌شود — هر زمان می‌توانید از منو وضعیت را بررسی کنید.",
+    },
+    "bot.builder.no_orders": {
+        "en": "You don't have any orders yet. Use the menu to build your first bot!",
+        "fa": "هنوز سفارشی ثبت نکرده‌اید. از منو برای ساخت اولین ربات خود استفاده کنید!",
+    },
+    "bot.builder.order_status": {
+        "en": "Order #{number}: {status_text}",
+        "fa": "سفارش شماره {number}: {status_text}",
+    },
+    "bot.builder.orderStatus.DRAFT": {"en": "Being prepared.", "fa": "در حال آماده‌سازی."},
+    "bot.builder.orderStatus.PENDING_PAYMENT": {
+        "en": "Awaiting your payment.", "fa": "در انتظار پرداخت شما.",
+    },
+    "bot.builder.orderStatus.RECEIPT_SUBMITTED": {
+        "en": "Your receipt was received — awaiting review.", "fa": "رسید شما دریافت شد — در انتظار بررسی.",
+    },
+    "bot.builder.orderStatus.PAYMENT_REVIEW": {
+        "en": "Your payment is being reviewed.", "fa": "پرداخت شما در حال بررسی است.",
+    },
+    "bot.builder.orderStatus.PAYMENT_REJECTED": {
+        "en": "Your payment was not accepted — please check the website for details.",
+        "fa": "پرداخت شما تأیید نشد — برای جزئیات به وبسایت مراجعه کنید.",
+    },
+    "bot.builder.orderStatus.PAID": {
+        "en": "Payment confirmed — setting up your bot now.", "fa": "پرداخت تأیید شد — در حال راه‌اندازی ربات شما.",
+    },
+    "bot.builder.orderStatus.PROVISIONING": {
+        "en": "Setting up your bot.", "fa": "در حال راه‌اندازی ربات شما.",
+    },
+    "bot.builder.orderStatus.CONFIGURING": {
+        "en": "Applying your settings.", "fa": "در حال اعمال تنظیمات شما.",
+    },
+    "bot.builder.orderStatus.DEPLOYING": {
+        "en": "Almost live.", "fa": "تقریباً آماده است.",
+    },
+    "bot.builder.orderStatus.ACTIVE": {
+        "en": "🎉 Your bot is live! Manage it from My Bots on the website.",
+        "fa": "🎉 ربات شما فعال شد! از «ربات‌های من» در وبسایت آن را مدیریت کنید.",
+    },
+    "bot.builder.orderStatus.GRACE_PERIOD": {
+        "en": "Live, but your subscription needs renewal soon.", "fa": "فعال، اما اشتراک شما به‌زودی نیاز به تمدید دارد.",
+    },
+    "bot.builder.orderStatus.SUSPENDED": {
+        "en": "Suspended — please check the website.", "fa": "معلق شده — لطفاً به وبسایت مراجعه کنید.",
+    },
+    "bot.builder.orderStatus.CANCELLED": {"en": "Cancelled.", "fa": "لغو شد."},
+    "bot.builder.orderStatus.FAILED": {
+        "en": "Something went wrong — our team has been notified.", "fa": "مشکلی پیش آمد — تیم ما مطلع شد.",
+    },
+
+    # --- CollectItemField.label_key mirrors (Stage 2/3's `builder.collect.*` keys were
+    # only ever wired into the website's own i18n JSON; the chat-native builder above
+    # needs the identical text from this, its separate, Python-side catalogue) ---
+    "builder.collect.faq.question": {"en": "Question", "fa": "پرسش"},
+    "builder.collect.faq.answer": {"en": "Answer", "fa": "پاسخ"},
+    "builder.collect.property_listings.title_field": {"en": "Title", "fa": "عنوان"},
+    "builder.collect.property_listings.listing_type": {"en": "Listing type", "fa": "نوع آگهی"},
+    "builder.collect.property_listings.sale": {"en": "For sale", "fa": "برای فروش"},
+    "builder.collect.property_listings.rent": {"en": "For rent", "fa": "برای اجاره"},
+    "builder.collect.property_listings.property_type": {"en": "Property type", "fa": "نوع ملک"},
+    "builder.collect.property_listings.apartment": {"en": "Apartment", "fa": "آپارتمان"},
+    "builder.collect.property_listings.house": {"en": "House", "fa": "خانه ویلایی"},
+    "builder.collect.property_listings.land": {"en": "Land", "fa": "زمین"},
+    "builder.collect.property_listings.commercial": {"en": "Commercial", "fa": "تجاری"},
+    "builder.collect.property_listings.price": {"en": "Price", "fa": "قیمت"},
+    "builder.collect.property_listings.address": {"en": "Address", "fa": "آدرس"},
+    "builder.collect.property_listings.description": {"en": "Description", "fa": "توضیحات"},
+    "builder.collect.course_catalog.title_field": {"en": "Course title", "fa": "عنوان دوره"},
+    "builder.collect.course_catalog.instructor": {"en": "Instructor (optional)", "fa": "مدرس (اختیاری)"},
+    "builder.collect.course_catalog.price": {"en": "Price", "fa": "قیمت"},
+    "builder.collect.course_catalog.duration": {
+        "en": "Duration (e.g. \"6 weeks\")", "fa": "مدت (مثلاً «۶ هفته»)",
+    },
+    "builder.collect.course_catalog.description": {"en": "Description", "fa": "توضیحات"},
 }
 
 

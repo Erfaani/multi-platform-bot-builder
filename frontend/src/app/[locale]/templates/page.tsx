@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useIntl, useTranslations } from "@/i18n/provider";
 import { builderApi, type BusinessTemplate } from "@/lib/builder";
+import { AppIcon } from "@/lib/icons";
 
 export default function TemplatesPage() {
   const t = useTranslations();
@@ -30,6 +31,9 @@ export default function TemplatesPage() {
       <div className="grid gap-4 sm:grid-cols-2">
         {templates.map((template) => (
           <article key={template.slug} className="card space-y-2">
+            <span className="icon-badge bg-accent-soft text-accent">
+              <AppIcon name={template.icon} size={20} />
+            </span>
             <h2 className="font-medium">{template.name}</h2>
             <p className="text-sm text-muted">{template.description}</p>
             <p className="text-xs text-muted">

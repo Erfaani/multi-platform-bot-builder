@@ -12,6 +12,18 @@ import type { Locale } from "@/i18n/config";
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
+//: The backend's origin, without the `/api/v1` suffix — media URLs (product/property/
+//: course photos) come back from the API as paths relative to the backend
+//: (`/media/public/...`), not the frontend, which is a different origin in dev.
+const API_ORIGIN = API_BASE.replace(/\/api\/v1\/?$/, "");
+
+/** Resolve a `/media/public/...`-shaped path from the API into a URL the browser can
+ * actually load. A falsy `path` (no photo yet) passes through unchanged. */
+export function mediaUrl(path: string): string {
+  if (!path) return path;
+  return `${API_ORIGIN}${path}`;
+}
+
 const ACCESS_KEY = "bb.access";
 const REFRESH_KEY = "bb.refresh";
 const TENANT_KEY = "bb.tenant";
@@ -98,7 +110,12 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const { method = "GET", body, locale, auth = true, tenant, quoteSession } = options;
 
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  // A FormData body (file uploads) must NOT get a JSON Content-Type or a stringified
+  // body — the browser sets its own multipart boundary header, which fetch can only do
+  // correctly if this code never touches Content-Type itself.
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+
+  const headers: Record<string, string> = isFormData ? {} : { "Content-Type": "application/json" };
   if (locale) headers["Accept-Language"] = locale;
   if (quoteSession) headers["X-Quote-Session"] = quoteSession;
 
@@ -113,7 +130,7 @@ export async function apiFetch<T>(
     response = await fetch(`${API_BASE}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isFormData ? (body as FormData) : JSON.stringify(body),
     });
   } catch {
     throw new ApiError(0, { code: "error.network", message: "Could not reach the server." });

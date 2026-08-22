@@ -7,6 +7,92 @@ import { crmApi, type FeedbackView, type LeadStatus, type LeadView } from "@/lib
 
 const STATUSES: LeadStatus[] = ["NEW", "CONTACTED", "QUALIFIED", "WON", "LOST"];
 
+function LeadNotesAndTags({
+  lead,
+  botId,
+  onChanged,
+}: {
+  lead: LeadView;
+  botId: string;
+  onChanged: () => void;
+}) {
+  const t = useTranslations();
+  const { locale } = useIntl();
+  const [noteText, setNoteText] = useState("");
+  const [tagText, setTagText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function addNote(event: React.FormEvent) {
+    event.preventDefault();
+    if (!noteText.trim()) return;
+    setBusy(true);
+    try {
+      await crmApi.addNote(botId, lead.id, noteText.trim(), locale);
+      setNoteText("");
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addTag(event: React.FormEvent) {
+    event.preventDefault();
+    if (!tagText.trim()) return;
+    setBusy(true);
+    try {
+      await crmApi.tagLead(botId, lead.id, tagText.trim(), locale);
+      setTagText("");
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 space-y-2 border-t border-line pt-2 text-xs">
+      <div className="flex flex-wrap gap-1">
+        {lead.tags.map((tag) => (
+          <span key={tag} className="rounded-full border border-line px-2 py-0.5">
+            {tag}
+          </span>
+        ))}
+      </div>
+      <form onSubmit={addTag} className="flex gap-1">
+        <input
+          className="field flex-1 py-1 text-xs"
+          placeholder={t("bot.crm.addTagPlaceholder")}
+          value={tagText}
+          onChange={(e) => setTagText(e.target.value)}
+        />
+        <button type="submit" disabled={busy} className="btn-ghost px-2 py-1 text-xs shrink-0">
+          {t("bot.crm.addTag")}
+        </button>
+      </form>
+
+      {lead.notes.length > 0 ? (
+        <ul className="space-y-1">
+          {lead.notes.map((note) => (
+            <li key={note.id} className="text-muted">
+              {note.body}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <form onSubmit={addNote} className="flex gap-1">
+        <input
+          className="field flex-1 py-1 text-xs"
+          placeholder={t("bot.crm.addNotePlaceholder")}
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+        />
+        <button type="submit" disabled={busy} className="btn-ghost px-2 py-1 text-xs shrink-0">
+          {t("bot.crm.addNote")}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export function CrmPanel({ botId }: { botId: string }) {
   const t = useTranslations();
   const { locale } = useIntl();
@@ -70,6 +156,7 @@ export function CrmPanel({ botId }: { botId: string }) {
                     {lead.phone}
                   </p>
                 ) : null}
+                <LeadNotesAndTags lead={lead} botId={botId} onChanged={load} />
               </li>
             ))}
           </ul>

@@ -11,6 +11,9 @@ from apps.customers.api.serializers import (
     AcceptInvitationSerializer,
     AddMemberResultSerializer,
     AddMemberSerializer,
+    ChannelIdentitySerializer,
+    ChannelLinkCodeSerializer,
+    ChannelLinkRequestSerializer,
     InvitationPreviewSerializer,
     TenantCreateSerializer,
     TenantInvitationSerializer,
@@ -21,12 +24,15 @@ from apps.customers.models import Tenant, TenantInvitation, TenantMembership
 from apps.customers.resolution import resolve_active_tenant
 from apps.customers.services import (
     accept_invitation,
+    create_link_code,
     create_tenant,
     get_invitation_preview,
     invite_or_add_member,
+    list_channel_identities,
     list_pending_invitations,
     remove_member,
     revoke_invitation,
+    unlink_channel_identity,
 )
 
 
@@ -197,3 +203,37 @@ class InvitationViewSet(viewsets.GenericViewSet):
             raw_token=serializer.validated_data["token"], user=request.user
         )
         return Response(TenantMembershipSerializer(membership).data)
+
+
+class ChannelLinkViewSet(viewsets.GenericViewSet):
+    """Linking a Telegram/Bale account to the caller's own website account (spec §47).
+
+    Not tenant-scoped: a platform identity belongs to the *user*, not to any one
+    workspace, so it works for the owner-admin menu on every bot they can already
+    manage from the dashboard.
+    """
+
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @extend_schema(responses=ChannelIdentitySerializer(many=True))
+    def list(self, request: Request) -> Response:
+        return Response(
+            ChannelIdentitySerializer(list_channel_identities(request.user), many=True).data
+        )
+
+    @extend_schema(request=ChannelLinkRequestSerializer, responses={201: ChannelLinkCodeSerializer})
+    def create(self, request: Request) -> Response:
+        serializer = ChannelLinkRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        nonce = create_link_code(
+            user=request.user,
+            platform=serializer.validated_data["platform"],
+            request_ip=request.META.get("REMOTE_ADDR"),
+        )
+        return Response(ChannelLinkCodeSerializer(nonce).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(responses={204: None})
+    def destroy(self, request: Request, pk: str) -> Response:
+        unlink_channel_identity(user=request.user, identity_id=int(pk))
+        return Response(status=status.HTTP_204_NO_CONTENT)

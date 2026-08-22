@@ -3,7 +3,14 @@ from __future__ import annotations
 from django.conf import settings
 from rest_framework import serializers
 
-from apps.customers.models import Tenant, TenantInvitation, TenantMembership, TenantRole
+from apps.customers.models import (
+    ChannelIdentity,
+    IdentityLinkNonce,
+    Tenant,
+    TenantInvitation,
+    TenantMembership,
+    TenantRole,
+)
 
 
 class TenantSerializer(serializers.ModelSerializer):
@@ -94,3 +101,25 @@ class InvitationPreviewSerializer(serializers.Serializer):
     tenant_name = serializers.CharField()
     role = serializers.CharField()
     email = serializers.EmailField()
+
+
+class ChannelIdentitySerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = ChannelIdentity
+        fields = ("id", "platform", "username", "linked_at")
+        read_only_fields = fields
+
+
+class ChannelLinkRequestSerializer(serializers.Serializer):
+    platform = serializers.ChoiceField(choices=ChannelIdentity.Platform.choices)
+
+
+class ChannelLinkCodeSerializer(serializers.ModelSerializer):
+    code = serializers.CharField(source="nonce", read_only=True)
+
+    class Meta:
+        model = IdentityLinkNonce
+        fields = ("code", "platform", "expires_at")
+        read_only_fields = fields

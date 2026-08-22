@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { ChannelLinksPanel } from "@/components/channel-links-panel";
 import { useIntl, useTranslations } from "@/i18n/provider";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -92,6 +93,8 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>
+
+      <ChannelLinksPanel />
 
       {!active ? (
         <p className="text-sm text-muted">{t("dashboard.noWorkspace")}</p>

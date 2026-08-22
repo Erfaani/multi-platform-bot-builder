@@ -379,3 +379,184 @@ class TestCommerceApi:
     def test_a_stranger_cannot_manage_another_tenants_products(self, other_client, provisioned_bot):
         response = other_client.get(f"/api/v1/bots/{provisioned_bot.public_id}/products/")
         assert response.status_code == 404
+
+
+def _test_image(name: str = "photo.png") -> "SimpleUploadedFile":
+    import io
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (8, 8), "blue").save(buffer, format="PNG")
+    return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/png")
+
+
+class TestPropertyListings:
+    """Real estate's dedicated data model (Phase 10.5) — a `Product` has no bedrooms,
+    listing type, or address, which is the whole reason this isn't just `create_product`
+    with extra kwargs."""
+
+    def test_create_requires_a_title(self, provisioned_bot):
+        with pytest.raises(ValidationError):
+            services.create_property(
+                bot=provisioned_bot, actor=None, title=" ", listing_type="SALE",
+                property_type="APARTMENT", price_minor=100,
+            )
+
+    def test_create_and_read_back_the_fields_that_dont_exist_on_product(self, provisioned_bot):
+        listing = services.create_property(
+            bot=provisioned_bot, actor=None, title="2-bed downtown", listing_type="RENT",
+            property_type="APARTMENT", price_minor=250_000_00, bedrooms=2, bathrooms=1,
+            area_sqm=85, address="12 Example Street",
+        )
+        assert listing.bedrooms == 2
+        assert listing.area_sqm == 85
+        assert listing.listing_type == "RENT"
+
+    def test_update_and_delete(self, provisioned_bot):
+        listing = services.create_property(
+            bot=provisioned_bot, actor=None, title="House", listing_type="SALE",
+            property_type="HOUSE", price_minor=100,
+        )
+        updated = services.update_property(bot=provisioned_bot, property_id=listing.pk, actor=None, bedrooms=4)
+        assert updated.bedrooms == 4
+
+        services.delete_property(bot=provisioned_bot, property_id=listing.pk, actor=None)
+        assert services.list_properties(provisioned_bot.pk) == []
+
+    def test_add_and_delete_an_image(self, provisioned_bot):
+        listing = services.create_property(
+            bot=provisioned_bot, actor=None, title="House", listing_type="SALE",
+            property_type="HOUSE", price_minor=100,
+        )
+        image = services.add_property_image(
+            bot=provisioned_bot, property_id=listing.pk, actor=None, upload=_test_image()
+        )
+        assert image.file.name.startswith("public/properties/")
+
+        services.delete_property_image(bot=provisioned_bot, image_id=image.pk, actor=None)
+        assert listing.images.count() == 0
+
+    def test_the_management_api_full_round_trip(self, auth_client, provisioned_bot):
+        create = auth_client.post(
+            f"/api/v1/bots/{provisioned_bot.public_id}/properties/",
+            {
+                "title": "Garden house", "listing_type": "SALE", "property_type": "HOUSE",
+                "price_minor": 500_000_00, "bedrooms": 3,
+            },
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        property_id = create.json()["id"]
+
+        listed = auth_client.get(f"/api/v1/bots/{provisioned_bot.public_id}/properties/")
+        assert any(p["id"] == property_id for p in listed.json())
+
+        updated = auth_client.patch(
+            f"/api/v1/bots/{provisioned_bot.public_id}/properties/{property_id}/",
+            {"bedrooms": 5}, format="json",
+        )
+        assert updated.json()["bedrooms"] == 5
+
+        image_upload = auth_client.post(
+            f"/api/v1/bots/{provisioned_bot.public_id}/properties/{property_id}/images/",
+            {"file": _test_image()}, format="multipart",
+        )
+        assert image_upload.status_code == 201
+        assert image_upload.json()["url"].startswith("/media/public/properties/")
+
+        deleted = auth_client.delete(f"/api/v1/bots/{provisioned_bot.public_id}/properties/{property_id}/")
+        assert deleted.status_code == 204
+
+    def test_a_stranger_cannot_manage_another_tenants_properties(self, other_client, provisioned_bot):
+        response = other_client.get(f"/api/v1/bots/{provisioned_bot.public_id}/properties/")
+        assert response.status_code == 404
+
+
+class TestCourseOfferings:
+    """Academy's dedicated data model (Phase 10.5) — schedule, instructor and
+    capacity/enrollment have no home on a generic `Product` either."""
+
+    def test_create_requires_a_title(self, provisioned_bot):
+        with pytest.raises(ValidationError):
+            services.create_course(bot=provisioned_bot, actor=None, title=" ", price_minor=100)
+
+    def test_capacity_defaults_to_unlimited(self, provisioned_bot):
+        course = services.create_course(bot=provisioned_bot, actor=None, title="Photoshop", price_minor=100)
+        assert course.capacity is None
+        assert course.has_capacity is True
+
+    def test_update_and_delete(self, provisioned_bot):
+        course = services.create_course(bot=provisioned_bot, actor=None, title="Excel", price_minor=100)
+        updated = services.update_course(
+            bot=provisioned_bot, course_id=course.pk, actor=None, instructor_name="Dana"
+        )
+        assert updated.instructor_name == "Dana"
+
+        services.delete_course(bot=provisioned_bot, course_id=course.pk, actor=None)
+        assert services.list_courses(provisioned_bot.pk) == []
+
+    def test_set_thumbnail_replaces_any_existing_one(self, provisioned_bot):
+        course = services.create_course(bot=provisioned_bot, actor=None, title="Excel", price_minor=100)
+        first = services.set_course_thumbnail(
+            bot=provisioned_bot, course_id=course.pk, actor=None, upload=_test_image("a.png")
+        )
+        first_name = first.thumbnail.name
+        second = services.set_course_thumbnail(
+            bot=provisioned_bot, course_id=course.pk, actor=None, upload=_test_image("b.png")
+        )
+        assert second.thumbnail.name != first_name
+
+    def test_the_management_api_full_round_trip(self, auth_client, provisioned_bot):
+        create = auth_client.post(
+            f"/api/v1/bots/{provisioned_bot.public_id}/courses/",
+            {"title": "Beginner Photoshop", "price_minor": 199_00, "instructor_name": "Dana"},
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        course_id = create.json()["id"]
+
+        thumb = auth_client.post(
+            f"/api/v1/bots/{provisioned_bot.public_id}/courses/{course_id}/thumbnail/",
+            {"file": _test_image()}, format="multipart",
+        )
+        assert thumb.status_code == 200
+        assert thumb.json()["thumbnail_url"].startswith("/media/public/courses/")
+
+        deleted = auth_client.delete(f"/api/v1/bots/{provisioned_bot.public_id}/courses/{course_id}/")
+        assert deleted.status_code == 204
+
+    def test_a_stranger_cannot_manage_another_tenants_courses(self, other_client, provisioned_bot):
+        response = other_client.get(f"/api/v1/bots/{provisioned_bot.public_id}/courses/")
+        assert response.status_code == 404
+
+
+class TestProductPhotos:
+    """The general-purpose extension of the same upload pipeline (Phase 10.5) — a
+    shop/restaurant product had no image field at all until now."""
+
+    def test_add_and_delete_an_image(self, provisioned_bot, product):
+        image = services.add_product_image(
+            bot=provisioned_bot, product_id=product.pk, actor=None, upload=_test_image()
+        )
+        assert image.file.name.startswith("public/products/")
+
+        services.delete_product_image(bot=provisioned_bot, image_id=image.pk, actor=None)
+        assert product.images.count() == 0
+
+    def test_the_management_api_round_trip(self, auth_client, provisioned_bot, product):
+        upload = auth_client.post(
+            f"/api/v1/bots/{provisioned_bot.public_id}/products/{product.pk}/images/",
+            {"file": _test_image()}, format="multipart",
+        )
+        assert upload.status_code == 201
+        image_id = upload.json()["id"]
+        assert upload.json()["url"].startswith("/media/public/products/")
+
+        listed = auth_client.get(f"/api/v1/bots/{provisioned_bot.public_id}/products/")
+        product_row = next(p for p in listed.json() if p["id"] == product.pk)
+        assert len(product_row["images"]) == 1
+
+        deleted = auth_client.delete(f"/api/v1/bots/{provisioned_bot.public_id}/product-images/{image_id}/")
+        assert deleted.status_code == 204

@@ -30,6 +30,38 @@ class BuildQuoteSerializer(serializers.Serializer):
         choices=QuoteSource.choices, required=False, default=QuoteSource.WEB
     )
 
+    def validate(self, attrs: dict) -> dict:
+        """Clean `business["feature_config"]` against each feature's own `CollectSchema`
+        (dynamic configuration, Phase 10.5) — the one part of `business` that isn't free
+        text a customer types about their own business, so it's the one part worth
+        validating here rather than trusting silently, the same way the rest of this
+        serializer never accepts a price from the client."""
+        from apps.features.manifests import validate_collected_items
+        from apps.features.registry import all_manifests
+
+        business = attrs.get("business") or {}
+        feature_config = business.get("feature_config")
+        if isinstance(feature_config, dict):
+            manifests = all_manifests()
+            selected = set(attrs.get("features") or ())
+            cleaned_config = {}
+            for slug, raw_items in feature_config.items():
+                # Content for a feature the customer did not actually select is dropped,
+                # not just unused — `resolved_features` (auto-added dependencies) can
+                # differ from this list, but collecting content for something never
+                # chosen at all is either a stale client state or tampering, not a
+                # legitimate case to seed content for.
+                if slug not in selected:
+                    continue
+                manifest = manifests.get(slug)
+                if manifest is None or manifest.collects is None:
+                    continue
+                cleaned = validate_collected_items(manifest.collects, raw_items)
+                if cleaned:
+                    cleaned_config[slug] = cleaned
+            attrs["business"] = {**business, "feature_config": cleaned_config}
+        return attrs
+
 
 class QuoteItemSerializer(serializers.ModelSerializer):
     label = serializers.SerializerMethodField()

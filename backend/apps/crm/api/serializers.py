@@ -25,7 +25,7 @@ class LeadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lead
         fields = (
-            "id", "source", "status", "message", "phone", "contact_name",
+            "id", "source", "status", "message", "phone", "email", "contact_name",
             "assigned_to_email", "notes", "tags", "created_at",
         )
         read_only_fields = fields

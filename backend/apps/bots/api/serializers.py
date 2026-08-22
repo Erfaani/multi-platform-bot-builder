@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from apps.bots.models import Bot, BotPlatformInstance
-from apps.businesses.models import BusinessProfile, FaqEntry
+from apps.bots.models import Bot, BotPlatformInstance, InputRestrictionPolicy
+from apps.businesses.models import BusinessProfile, FaqEntry, WorkingHours
+from apps.core.files import public_file_url
 from apps.core.formatting import money_to_representation
 from apps.core.money import Money
 
@@ -127,6 +128,8 @@ class SubmitTokenSerializer(serializers.Serializer):
 class BusinessProfileSerializer(serializers.ModelSerializer):
     """What the bot actually says about the business (spec §24)."""
 
+    logo_url = serializers.SerializerMethodField()
+
     class Meta:
         model = BusinessProfile
         fields = (
@@ -139,7 +142,11 @@ class BusinessProfileSerializer(serializers.ModelSerializer):
             "address",
             "city",
             "working_hours_text",
+            "logo_url",
         )
+
+    def get_logo_url(self, obj: BusinessProfile) -> str:
+        return public_file_url(obj.logo)
 
 
 class BusinessProfileUpdateSerializer(serializers.Serializer):
@@ -152,6 +159,40 @@ class BusinessProfileUpdateSerializer(serializers.Serializer):
     address = serializers.CharField(max_length=255, required=False, allow_blank=True)
     city = serializers.CharField(max_length=128, required=False, allow_blank=True)
     working_hours_text = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+
+class WorkingHoursRowSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkingHours
+        fields = ("weekday", "opens_at", "closes_at", "is_closed")
+
+
+class WorkingHoursWriteSerializer(serializers.Serializer):
+    """Always replaces the full week — see `businesses.services.set_working_hours`."""
+
+    days = WorkingHoursRowSerializer(many=True)
+
+
+class InputRestrictionPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InputRestrictionPolicy
+        fields = (
+            "allowed_calling_codes",
+            "blocked_phone_numbers",
+            "collect_email_on_consultation",
+            "allowed_email_domains",
+            "blocked_email_domains",
+            "strict_email_format",
+        )
+
+
+class InputRestrictionPolicyWriteSerializer(serializers.Serializer):
+    allowed_calling_codes = serializers.ListField(child=serializers.CharField(max_length=8), required=False)
+    blocked_phone_numbers = serializers.ListField(child=serializers.CharField(max_length=32), required=False)
+    collect_email_on_consultation = serializers.BooleanField(required=False)
+    allowed_email_domains = serializers.ListField(child=serializers.CharField(max_length=253), required=False)
+    blocked_email_domains = serializers.ListField(child=serializers.CharField(max_length=253), required=False)
+    strict_email_format = serializers.BooleanField(required=False)
 
 
 class FaqEntrySerializer(serializers.ModelSerializer):

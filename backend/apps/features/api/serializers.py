@@ -15,6 +15,7 @@ class FeatureSerializer(serializers.ModelSerializer):
     requires = serializers.SerializerMethodField()
     always_on = serializers.SerializerMethodField()
     platforms = serializers.SerializerMethodField()
+    collects = serializers.SerializerMethodField()
 
     class Meta:
         model = Feature
@@ -29,6 +30,7 @@ class FeatureSerializer(serializers.ModelSerializer):
             "always_on",
             "platforms",
             "sort_order",
+            "collects",
         )
 
     def _locale(self) -> str:
@@ -49,6 +51,35 @@ class FeatureSerializer(serializers.ModelSerializer):
     def get_always_on(self, obj: Feature) -> bool:
         manifest = all_manifests().get(obj.slug)
         return bool(manifest and manifest.always_on)
+
+    def get_collects(self, obj: Feature) -> dict | None:
+        """`*_key` fields here are frontend i18n keys (`builder.collect.faq.title`, ...),
+        resolved client-side the same way `builder.step.faq` already is — not translated
+        server-side, unlike `name`/`description` above, which are bot-facing content."""
+        manifest = all_manifests().get(obj.slug)
+        schema = manifest.collects if manifest else None
+        if schema is None:
+            return None
+        return {
+            "kind": schema.kind,
+            "title_key": schema.title_key,
+            "hint_key": schema.hint_key,
+            "add_label_key": schema.add_label_key,
+            "max_items": schema.max_items,
+            "fields": [
+                {
+                    "key": item.key,
+                    "label_key": item.label_key,
+                    "kind": item.kind,
+                    "required": item.required,
+                    "max_length": item.max_length,
+                    "options": [
+                        {"value": opt.value, "label_key": opt.label_key} for opt in item.options
+                    ],
+                }
+                for item in schema.fields
+            ],
+        }
 
     def get_platforms(self, obj: Feature) -> dict:
         """Per-platform availability, so the builder can disable rather than fail."""

@@ -32,5 +32,9 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next|favicon.ico|.*\\..*).*)"],
+  // `miniapp` is excluded: it's a standalone Telegram Mini App route (its own root
+  // layout, no `[locale]` prefix — see `app/miniapp/[instanceId]/layout.tsx`) that
+  // resolves its own language from Telegram's `initDataUnsafe.user.language_code`
+  // instead of a URL segment.
+  matcher: ["/((?!api|_next|favicon.ico|miniapp|.*\\..*).*)"],
 };
