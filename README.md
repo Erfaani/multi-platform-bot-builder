@@ -298,4 +298,4 @@ If you'd like to use this project or its code for something, reach out first.
 
 ---
 
-Built by [Erfan Jouybar](https://github.com/Erfaani). See [CONTRIBUTORS.md](CONTRIBUTORS.md).
+Built by [Erfan Jouybar](https://github.com/Erfaani).
