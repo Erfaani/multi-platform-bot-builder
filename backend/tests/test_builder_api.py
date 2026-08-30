@@ -117,6 +117,20 @@ class TestQuoteEndpoint:
         ).json()
         assert "تومان" in persian["total"]["formatted"]
 
+    def test_persian_locale_translates_every_line_label_not_just_the_amount(self, api, catalogue):
+        """A Persian customer must not see English line-item names (feature, platform,
+        or template) in an otherwise fully-Persian price box."""
+        body = create_quote(api, currency="IRR").json()
+        persian = api.get(
+            f"{QUOTES}{body['id']}/?lang=fa",
+            HTTP_X_QUOTE_SESSION=body["session_secret"],
+        ).json()
+        labels = [item["label"] for item in persian["items"]]
+
+        assert not any(label.isascii() for label in labels), labels
+        assert any("تلگرام" in label for label in labels)
+        assert any("پزشک" in label for label in labels)  # clinic template, translated
+
 
 class TestQuoteAccess:
     def test_the_session_secret_is_required_to_read_it_back(self, api, catalogue):

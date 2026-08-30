@@ -178,7 +178,7 @@ def update_configuration(*, bot: Bot, actor, **fields) -> Bot:
     return bot
 
 
-def available_addon_features(bot: Bot) -> list[dict]:
+def available_addon_features(bot: Bot, locale: str = "en") -> list[dict]:
     """Catalogue features this bot could add, each with its price (spec §24 upsell).
 
     "Available" means: offered by the bot's template, not already enabled, and
@@ -187,6 +187,7 @@ def available_addon_features(bot: Bot) -> list[dict]:
     """
     from apps.features.models import Feature
     from apps.features.services import unavailable_selections
+    from apps.i18n_content.services import translate as translate_content
     from apps.pricing.services import live_prices, resolve_price_list
 
     owned = set(bot.bot_features.filter(is_enabled=True).values_list("feature__slug", flat=True))
@@ -223,8 +224,10 @@ def available_addon_features(bot: Bot) -> list[dict]:
         results.append(
             {
                 "slug": feature.slug,
-                "name": feature.name,
-                "description": feature.description,
+                "name": translate_content(feature, "name", locale=locale, source=feature.name),
+                "description": translate_content(
+                    feature, "description", locale=locale, source=feature.description
+                ),
                 "icon": feature.icon,
                 "currency": price_list.currency if price_list else bot.currency,
                 "setup_amount_minor": setup.amount_minor if setup else 0,

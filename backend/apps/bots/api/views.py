@@ -251,7 +251,7 @@ class BotViewSet(TenantScopedReadOnlyViewSet):
     @action(detail=True, methods=["get"], url_path="available-features")
     def available_features(self, request: Request, public_id: str) -> Response:
         bot = self.get_object()
-        results = available_addon_features(bot)
+        results = available_addon_features(bot, locale=getattr(request, "locale", "en"))
         return Response(
             AvailableFeatureSerializer(
                 results, many=True, context=self.get_serializer_context()

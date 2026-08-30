@@ -37,10 +37,6 @@ export default function HomePage() {
           </div>
         ))}
       </section>
-
-      <p className="rounded-lg border border-line bg-transparent p-4 text-sm text-muted">
-        {t("home.phase.notice")}
-      </p>
     </div>
   );
 }

@@ -4,9 +4,18 @@ from django.conf import settings
 from rest_framework import serializers
 
 from apps.core.formatting import money_to_representation
+from apps.i18n_content.services import translate as translate_content
 from apps.orders.models import Quote, QuoteItem, QuoteSource
 from apps.platforms.constants import SELLABLE_PLATFORMS
 from apps.platforms.preview.messages import translate as translate_bot
+
+#: Brand names, kept in their own script per locale rather than left in Latin for a
+#: Persian reader — everything else about a line item follows the same rule via
+#: `i18n_content.translate`, this is just the one place with no database row to read.
+_PLATFORM_NAMES = {
+    "telegram": {"en": "Telegram", "fa": "تلگرام"},
+    "bale": {"en": "Bale", "fa": "بله"},
+}
 
 
 class BuildQuoteSerializer(serializers.Serializer):
@@ -104,10 +113,12 @@ def _price_label(item: QuoteItem, locale: str) -> str:
     if item.feature_slug:
         feature = Feature.objects.filter(slug=item.feature_slug).first()
         if feature is not None:
+            name = translate_content(feature, "name", locale=locale, source=feature.name)
             suffix = item.price_key.rsplit(".", 1)[-1]
             if suffix == "monthly":
-                return f"{feature.name} (monthly)"
-            return feature.name
+                monthly_suffix = {"en": " (monthly)", "fa": " (ماهانه)"}
+                return f"{name}{monthly_suffix.get(locale, monthly_suffix['en'])}"
+            return name
 
     known = {
         "platform.multi.surcharge": {
@@ -122,6 +133,9 @@ def _price_label(item: QuoteItem, locale: str) -> str:
 
     if item.price_key.startswith("platform."):
         slug = item.price_key.split(".")[1]
+        names = _PLATFORM_NAMES.get(slug)
+        if names:
+            return names.get(locale, names["en"])
         return slug.title()
 
     if item.price_key.startswith("template."):
@@ -130,7 +144,10 @@ def _price_label(item: QuoteItem, locale: str) -> str:
         slug = item.price_key.split(".")[1]
         template = BusinessTemplate.objects.filter(slug=slug).first()
         if template is not None:
-            return f"{template.name} setup"
+            name = translate_content(template, "name", locale=locale, source=template.name)
+            if locale == "fa":
+                return f"راه‌اندازی {name}"
+            return f"{name} setup"
 
     return translate_bot(item.label_key, locale=locale)
 
